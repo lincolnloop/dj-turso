@@ -3,7 +3,7 @@ import typing as t
 from django.db.backends.sqlite3 import base as sqlite_base
 from django.utils import asyncio
 
-from dj_turso import creation, cursor, drivers, features, operations
+from dj_turso import creation, cursor, drivers, features, introspection, operations
 
 # Options Django's sqlite3 backend sets for the stdlib module that no Turso
 # driver accepts.
@@ -19,6 +19,7 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
     init_commands: list[str]
     creation_class = creation.DatabaseCreation
     features_class = features.DatabaseFeatures
+    introspection_class = introspection.DatabaseIntrospection
     ops_class = operations.DatabaseOperations
 
     def __init__(self, settings_dict: dict[str, t.Any], alias: str = "default") -> None:
