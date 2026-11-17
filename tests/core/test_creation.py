@@ -2,7 +2,6 @@ import collections.abc
 import pathlib
 import typing as t
 
-import django.conf
 import django.db
 import pytest
 import pytest_django
@@ -10,6 +9,7 @@ import turso
 from django.db.backends.base import base
 
 from tests import utils
+from tests.core import models
 
 RegisterDatabase = collections.abc.Callable[
     [str, dict[str, t.Any]], base.BaseDatabaseWrapper
@@ -19,19 +19,19 @@ RegisterDatabase = collections.abc.Callable[
 @pytest.fixture
 def register_database(
     django_db_blocker: pytest_django.DjangoDbBlocker,
-    monkeypatch: pytest.MonkeyPatch,
+    settings: pytest_django.Settings,
 ) -> collections.abc.Iterator[RegisterDatabase]:
     aliases: list[str] = []
+    original = django.db.connections.settings
 
     def register(
         alias: str, settings_dict: dict[str, t.Any]
     ) -> base.BaseDatabaseWrapper:
-        # Fills in the defaults Django gives every alias; "default" is required.
-        configured = django.db.connections.configure_settings(
-            {"default": {}, alias: settings_dict}
+        settings.DATABASES = {**settings.DATABASES, alias: settings_dict}
+        # The handler reads DATABASES once and ignores later overrides.
+        django.db.connections.settings = django.db.connections.configure_settings(
+            settings.DATABASES
         )
-        monkeypatch.setitem(django.conf.settings.DATABASES, alias, configured[alias])
-        monkeypatch.setitem(django.db.connections.settings, alias, configured[alias])
         aliases.append(alias)
         return django.db.connections[alias]
 
@@ -40,6 +40,7 @@ def register_database(
         for alias in aliases:
             django.db.connections[alias].close()
             del django.db.connections[alias]
+        django.db.connections.settings = original
 
 
 @pytest.mark.parametrize(
@@ -105,26 +106,24 @@ def test_in_memory_name_tests_in_memory(register_database: RegisterDatabase) -> 
 
 
 def test_aliases_get_separate_test_databases(
-    register_database: RegisterDatabase, tmp_path: pathlib.Path
+    register_database: RegisterDatabase,
 ) -> None:
-    first = register_database(
-        "first", {"ENGINE": "dj_turso", "NAME": str(tmp_path / "first.db")}
-    )
-    second = register_database(
-        "second", {"ENGINE": "dj_turso", "NAME": str(tmp_path / "second.db")}
-    )
+    first = register_database("first", {"ENGINE": "dj_turso", "NAME": "first.db"})
+    second = register_database("second", {"ENGINE": "dj_turso", "NAME": "second.db"})
     first.creation.create_test_db(verbosity=0)
     second.creation.create_test_db(verbosity=0)
 
-    with first.cursor() as cursor:
-        cursor.execute("CREATE TABLE item (name TEXT)")
-    with second.cursor() as cursor:
-        cursor.execute("SELECT name FROM sqlite_master WHERE name = 'item'")
-        rows = cursor.fetchall()
-    first.creation.destroy_test_db(str(tmp_path / "first.db"), verbosity=0)
-    second.creation.destroy_test_db(str(tmp_path / "second.db"), verbosity=0)
+    models.Tag.objects.using("first").create(name="first")
+    models.Tag.objects.using("second").create(name="second")
+    first_names = list(models.Tag.objects.using("first").values_list("name", flat=True))
+    second_names = list(
+        models.Tag.objects.using("second").values_list("name", flat=True)
+    )
+    first.creation.destroy_test_db("first.db", verbosity=0)
+    second.creation.destroy_test_db("second.db", verbosity=0)
 
-    assert rows == []
+    assert first_names == ["first"]
+    assert second_names == ["second"]
 
 
 def test_create_replaces_existing_test_database(
@@ -143,12 +142,10 @@ def test_create_replaces_existing_test_database(
     )
 
     connection.creation.create_test_db(verbosity=0, autoclobber=True)
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT name FROM sqlite_master WHERE name = 'stale'")
-        rows = cursor.fetchall()
+    table_names = connection.introspection.table_names()
     connection.creation.destroy_test_db(str(tmp_path / "default.db"), verbosity=0)
 
-    assert rows == []
+    assert table_names == ["core_attachment", "core_event", "core_tag"]
 
 
 def test_clone_raises_not_supported_error(
