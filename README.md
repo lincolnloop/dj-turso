@@ -62,8 +62,25 @@ pip install pytest-django pytest-xdist
 pytest -n auto
 ```
 
-Test databases follow Django's defaults: in memory, unless `TEST["NAME"]` names one.
-Point it at a file:
+Django's runner tests in memory, unless `TEST["NAME"]` names a test database, and gives
+each worker a copy. pytest-xdist workers each get a file instead: pytest-django names it
+`TEST["NAME"]`, or `test_` and `NAME`, with the worker appended, such as
+`test_default.db_gw0`. It leaves a `TEST["NAME"]` of `":memory:"` in memory.
+
+So with a URL `NAME`, as for Turso Cloud, set the test database in memory:
+
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "dj_turso",
+        "NAME": "turso://my-database.turso.io",
+        "OPTIONS": {"auth_token": os.environ["TURSO_AUTH_TOKEN"]},
+        "TEST": {"NAME": ":memory:"},
+    },
+}
+```
+
+Or point the test database at a file:
 
 ```python
 DATABASES = {

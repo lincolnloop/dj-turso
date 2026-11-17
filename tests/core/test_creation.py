@@ -468,6 +468,67 @@ def test_url_test_name_is_left_in_place(
     ]
 
 
+@pytest.mark.parametrize(
+    ("database", "worker_test_name"),
+    [
+        pytest.param(
+            {"ENGINE": "dj_turso", "NAME": "default.db"},
+            "test_default.db_{worker}",
+            id="file",
+        ),
+        pytest.param(
+            {
+                "ENGINE": "dj_turso",
+                "NAME": "https://example.invalid",
+                "OPTIONS": {"auth_token": "remote-only"},
+                "TEST": {"NAME": ":memory:"},
+            },
+            ":memory:",
+            id="url",
+        ),
+    ],
+)
+@pytest.mark.timeout(60)
+def test_xdist_workers_get_test_databases(
+    database: dict[str, t.Any],
+    monkeypatch: pytest.MonkeyPatch,
+    pytester: pytest.Pytester,
+    worker_test_name: str,
+) -> None:
+    pytester.makepyfile(
+        settings=f"""
+        DATABASES = {{"default": {database!r}}}
+        DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+        INSTALLED_APPS = ["tests.core"]
+        """,
+        test_workers=f"""
+        import os
+
+        import django.db
+        import pytest
+
+        from tests.core import models
+
+        @pytest.mark.django_db
+        @pytest.mark.parametrize("name", ["first", "second"])
+        def test_writes_to_its_worker_database(name):
+            models.Tag.objects.create(name=name)
+
+            worker = os.environ["PYTEST_XDIST_WORKER"]
+            assert django.db.connection.settings_dict["NAME"] == (
+                {worker_test_name!r}.format(worker=worker)
+            )
+            assert list(models.Tag.objects.values_list("name", flat=True)) == [name]
+        """,
+    )
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "settings")
+    monkeypatch.setenv("PYTHONPATH", f"{pytester.path}{os.pathsep}{REPOSITORY_ROOT}")
+
+    result = pytester.runpytest_subprocess("-n", "2", "-p", "no:cacheprovider")
+
+    result.assert_outcomes(passed=2)
+
+
 # ---
 
 

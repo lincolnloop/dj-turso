@@ -13,6 +13,8 @@ import pytest_django
 from dj_turso import base
 from tests import utils
 
+pytest_plugins = ["pytester"]
+
 
 # Per-worker database files: two processes cannot open one Turso file.
 @pytest.fixture(scope="session")
