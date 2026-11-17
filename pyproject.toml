@@ -101,7 +101,6 @@ source = "vcs"
 
 [tool.mypy]
 exclude = [
-  "^\\.bin/",
   "^\\.tox/",
   "^bench/",
   "^build/",

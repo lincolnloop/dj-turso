@@ -3,7 +3,6 @@
 *.db-wal
 *.egg-info/
 *.pyc
-.bin/
 .coverage
 .coverage.*
 .env
