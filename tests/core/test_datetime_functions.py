@@ -2,7 +2,7 @@ import datetime as dt
 
 import django.db
 import pytest
-from django.db.models import expressions, functions
+from django.db.models import expressions, fields, functions
 from django.utils import timezone
 from pytest_django import Settings
 
@@ -273,3 +273,172 @@ def test_datetime_function_in_other_time_zone_raises_not_supported(
         "Turso's date functions cannot convert from the database time zone 'UTC' "
         "to 'Europe/Paris'. Query in 'UTC' instead."
     )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("duration", "expected", "start"),
+    [
+        pytest.param(
+            dt.timedelta(days=1, microseconds=700_000),
+            dt.datetime(2015, 8, 17, 23, 30, 51, 321, dt.UTC),
+            dt.datetime(2015, 8, 16, 23, 30, 50, 300_321, dt.UTC),
+            id="microseconds",
+        ),
+        pytest.param(
+            dt.timedelta(microseconds=-200),
+            dt.datetime(1959, 12, 31, 23, 59, 59, 999_900, dt.UTC),
+            dt.datetime(1960, 1, 1, 0, 0, 0, 100, dt.UTC),
+            id="before-epoch",
+        ),
+        pytest.param(
+            dt.timedelta(seconds=-50),
+            dt.datetime(2015, 8, 16, 23, 30, tzinfo=dt.UTC),
+            dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC),
+            id="whole-seconds",
+        ),
+    ],
+)
+def test_datetime_plus_duration(
+    duration: dt.timedelta, expected: dt.datetime, start: dt.datetime
+) -> None:
+    models.Event.objects.create(start=start, duration=duration)
+
+    values = models.Event.objects.values_list(
+        expressions.F("start") + expressions.F("duration"), flat=True
+    )
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+def test_duration_plus_datetime() -> None:
+    models.Event.objects.create(
+        start=dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC),
+        duration=dt.timedelta(hours=1),
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("duration") + expressions.F("start"), flat=True
+    )
+
+    assert list(values) == [dt.datetime(2015, 8, 17, 0, 30, 50, tzinfo=dt.UTC)]
+
+
+@pytest.mark.django_db
+def test_datetime_minus_duration() -> None:
+    models.Event.objects.create(
+        start=dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC),
+        duration=dt.timedelta(days=1, microseconds=1),
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("start") - expressions.F("duration"), flat=True
+    )
+
+    assert list(values) == [dt.datetime(2015, 8, 15, 23, 30, 49, 999_999, dt.UTC)]
+
+
+@pytest.mark.django_db
+def test_date_minus_duration_moves_by_whole_days() -> None:
+    models.Event.objects.create(
+        day=dt.date(2015, 8, 16), duration=dt.timedelta(microseconds=1)
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("day") - expressions.F("duration"), flat=True
+    )
+
+    assert list(values) == [dt.datetime(2015, 8, 15, tzinfo=dt.UTC)]
+
+
+@pytest.mark.django_db
+def test_time_plus_duration_wraps_at_midnight() -> None:
+    models.Event.objects.create(
+        time=dt.time(23, 30, 50, 321), duration=dt.timedelta(hours=1)
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("time") + expressions.F("duration"), flat=True
+    )
+
+    assert list(values) == [dt.time(0, 30, 50, 321)]
+
+
+@pytest.mark.django_db
+def test_datetime_plus_null_duration_is_null() -> None:
+    models.Event.objects.create(
+        start=dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC)
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("start") + expressions.F("duration"), flat=True
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
+def test_duration_times_number() -> None:
+    models.Event.objects.create(duration=dt.timedelta(seconds=3))
+
+    values = models.Event.objects.values_list(
+        expressions.ExpressionWrapper(
+            expressions.F("duration") * 2, output_field=fields.DurationField()
+        ),
+        flat=True,
+    )
+
+    assert list(values) == [dt.timedelta(seconds=6)]
+
+
+@pytest.mark.django_db
+def test_duration_divided_by_number_keeps_fraction() -> None:
+    models.Event.objects.create(duration=dt.timedelta(microseconds=3))
+
+    values = models.Event.objects.values_list(
+        expressions.ExpressionWrapper(
+            expressions.F("duration") / 2, output_field=fields.DurationField()
+        ),
+        flat=True,
+    )
+
+    assert list(values) == [dt.timedelta(microseconds=2)]
+
+
+@pytest.mark.django_db
+def test_datetime_minus_datetime_gives_duration() -> None:
+    models.Event.objects.create(
+        start=dt.datetime(1960, 1, 1, 0, 0, 0, 1, dt.UTC),
+        end=dt.datetime(1960, 1, 2, tzinfo=dt.UTC),
+    )
+
+    values = models.Event.objects.values_list(
+        expressions.F("start") - expressions.F("end"), flat=True
+    )
+
+    assert list(values) == [dt.timedelta(days=-1, microseconds=1)]
+
+
+@pytest.mark.django_db
+def test_date_minus_date_gives_duration() -> None:
+    models.Event.objects.create(day=dt.date(2015, 8, 16))
+
+    values = models.Event.objects.values_list(
+        expressions.F("day") - expressions.Value(dt.date(2015, 8, 19)), flat=True
+    )
+
+    assert list(values) == [dt.timedelta(days=-3)]
+
+
+@pytest.mark.django_db
+def test_time_minus_time_gives_duration() -> None:
+    models.Event.objects.create(time=dt.time(12, 30, 15, 2345))
+
+    values = models.Event.objects.values_list(
+        expressions.F("time") - expressions.Value(dt.time(11, 15)), flat=True
+    )
+
+    assert list(values) == [
+        dt.timedelta(hours=1, minutes=15, seconds=15, microseconds=2345)
+    ]

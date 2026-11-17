@@ -3,52 +3,33 @@
 # issue (upstream-bug), tests (node ids or class/module prefixes).
 
 [[cause]]
-kind = "pending"
-name = "missing datetime UDFs"
-reason = "Django's sqlite3 backend registers its django_* date and time functions as Python UDFs; Turso drivers cannot register functions"
+kind = "unsupported"
+name = "time zone conversion"
+reason = "Turso's date functions know no time zones beyond UTC and the system's local time, so dj-turso cannot convert stored datetimes to another time zone and raises NotSupportedError"
 tests = [
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_using_duration_from_database",
-  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_mixed_type_annotation_date_interval",
   "tests/vendor/django/datetimes/tests.py::DateTimesTests::test_21432",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_exact_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_greaterthan_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_lessthan_lookup",
   "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_explicit_timezone_priority",
   "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_with_timezone",
   "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_with_timezone_minus_no_offset",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_exact_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_greaterthan_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_lessthan_lookup",
   "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_func_with_timezone",
   "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_timezone_applied_before_truncation",
-  "tests/vendor/django/db_functions/datetime/test_now.py::NowTests::test_basic",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_case_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_comparison",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_minus_duration",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_subquery_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_and_duration_field_addition_with_annotate_and_no_output_field",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_and_durationfield_addition_with_filter",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subquery_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction_with_annotate_and_no_output_field",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_add",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_subtract",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_duration_with_datetime",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_duration_with_datetime_microseconds",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_durationfield_add",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_durationfield_multiply_divide",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_exclude",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons1",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons2",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_query_clone",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_time_subquery_subtraction",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_time_subtraction",
   "tests/vendor/django/model_fields/test_datetimefield.py::DateTimeFieldTests::test_lookup_date_with_use_tz",
   "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_convert_timezones",
   "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetime_lookups",
   "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetimes",
-  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_update_with_timedelta",
+]
+
+[[cause]]
+kind = "pending"
+name = "asserts Django's function names in SQL"
+reason = "Counts 'extract' in the query text, where Django's sqlite3 backend names its django_*_extract UDFs; dj-turso's native SQL has no such name. The behavior asserted before it passes"
+tests = [
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_lessthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_lessthan_lookup",
 ]
 
 [[cause]]
@@ -139,13 +120,14 @@ tests = [
 [[cause]]
 kind = "pending"
 name = "skipped by Django on SQLite"
-reason = "Django's sqlite3 features skip these (negative ROUND precision, 15-digit decimal storage, naive table remakes, undeterminable executed query); dj-turso replaces django_test_skips with this index and has not settled their kind"
+reason = "Django's sqlite3 features skip these or expect them to fail (negative ROUND precision, 15-digit decimal storage, naive table remakes, undeterminable executed query, mixed date and datetime comparison after timedelta arithmetic); dj-turso replaces django_test_skips and django_test_expected_failures with this index and has not settled their kind"
 tests = [
   "tests/vendor/django/backends/base/test_base.py::ExecuteWrapperTests::test_wrapper_debug",
   "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_decimal_with_negative_precision",
   "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_float_with_negative_precision",
   "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_integer_with_negative_precision",
   "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_null_with_negative_precision",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons1",
   "tests/vendor/django/model_fields/test_decimalfield.py::DecimalFieldTests::test_fetch_from_db_without_float_rounding",
   "tests/vendor/django/schema/tests.py::SchemaTests::test_alter_field_default_doesnt_perform_queries",
   "tests/vendor/django/schema/tests.py::SchemaTests::test_rename_column_renames_deferred_sql_references",
