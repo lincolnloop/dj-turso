@@ -1,5 +1,6 @@
 """A turso_serverless session that keeps one HTTP connection open across requests."""
 
+import contextlib
 import http
 import http.client
 import json
@@ -108,9 +109,20 @@ class KeepAliveSession(serverless_session.Session):
 
     def close(self) -> None:
         try:
-            super().close()
+            self.close_stream()
         finally:
             self.close_http_connection()
+
+    # Sent straight on the connection, so that an idle stream is not first replaced
+    # by a new one. As upstream, errors are ignored: the stream may have expired.
+    def close_stream(self) -> None:
+        if self._baton is not None:
+            with contextlib.suppress(protocol.ProtocolError):
+                self.post_on_connection(
+                    "/v3/pipeline",
+                    {"baton": self._baton, "requests": [{"type": "close"}]},
+                )
+        self._reset_stream()
 
     # Upstream's contract: any failure ends the stream and raises ProtocolError, and
     # a request is never sent twice.

@@ -283,6 +283,20 @@ def test_query_after_stream_expiry_runs_with_session_setup(
 
 
 @pytest.mark.timeout(30)
+def test_close_after_stream_expiry_starts_no_new_stream(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+
+    proxied_target.close()
+
+    # Setup, the query, then the close on the old stream.
+    assert proxy.received_request_count == 3
+
+
+@pytest.mark.timeout(30)
 def test_stream_expiry_inside_transaction_loses_transaction_unsent(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
