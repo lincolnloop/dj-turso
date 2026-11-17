@@ -4,6 +4,7 @@ import collections.abc
 import datetime as dt
 import decimal
 import itertools
+import re
 import typing as t
 import uuid
 
@@ -11,16 +12,22 @@ from django.db.backends.sqlite3 import base as sqlite_base
 
 from dj_turso import drivers
 
+RETURNING_REGEX = re.compile(r"\bRETURNING\b", re.IGNORECASE)
+
 
 class TursoCursorWrapper:
     def __init__(self, cursor: t.Any) -> None:
         self.cursor = cursor
         self.ran_no_statements = False
+        self.buffered_rows: collections.abc.Iterator[t.Any] | None = None
 
     def __getattr__(self, name: str) -> t.Any:
         return getattr(self.cursor, name)
 
     def __iter__(self) -> collections.abc.Iterator[t.Any]:
+        if self.buffered_rows is not None:
+            yield from self.buffered_rows
+            return
         with drivers.relabel_engine_errors():
             yield from self.cursor
 
@@ -33,13 +40,19 @@ class TursoCursorWrapper:
         rowcount: int = self.cursor.rowcount
         return rowcount
 
+    # pyturso runs a statement that returns rows only as they are fetched: a
+    # RETURNING write would raise its constraint errors late, and hold the
+    # statement open so a savepoint cannot start. Run it to completion now.
     def execute(self, query: str, params: t.Any = None) -> t.Self:
         self.ran_no_statements = False
+        self.buffered_rows = None
         with drivers.relabel_engine_errors():
             if params is None:
                 self.cursor.execute(query)
             else:
                 self.cursor.execute(convert_query(query, params), adapt_params(params))
+            if RETURNING_REGEX.search(query):
+                self.buffered_rows = iter(self.cursor.fetchall())
         return self
 
     def executemany(
@@ -48,6 +61,7 @@ class TursoCursorWrapper:
         peekable, param_list = itertools.tee(param_list)
         first_params = next(peekable, None)
         self.ran_no_statements = first_params is None
+        self.buffered_rows = None
         with drivers.relabel_engine_errors():
             self.cursor.executemany(
                 convert_query(query, first_params),
@@ -56,15 +70,22 @@ class TursoCursorWrapper:
         return self
 
     def fetchone(self) -> t.Any:
+        if self.buffered_rows is not None:
+            return next(self.buffered_rows, None)
         with drivers.relabel_engine_errors():
             return self.cursor.fetchone()
 
     def fetchmany(self, size: int | None = None) -> list[t.Any]:
+        if self.buffered_rows is not None:
+            count = self.cursor.arraysize if size is None else size
+            return list(itertools.islice(self.buffered_rows, count))
         with drivers.relabel_engine_errors():
             rows: list[t.Any] = self.cursor.fetchmany(size)
         return rows
 
     def fetchall(self) -> list[t.Any]:
+        if self.buffered_rows is not None:
+            return list(self.buffered_rows)
         with drivers.relabel_engine_errors():
             rows: list[t.Any] = self.cursor.fetchall()
         return rows

@@ -3,6 +3,7 @@ import decimal
 import typing as t
 import uuid
 
+import django.db
 import pytest
 
 from dj_turso import base
@@ -120,3 +121,59 @@ def test_executemany_without_params_changes_nothing(
 
     assert rowcount == 0
     assert rows == []
+
+
+def test_insert_returning_constraint_error_raises_on_execute(
+    target: base.DatabaseWrapper,
+) -> None:
+    with target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+        cursor.execute("INSERT INTO item (name) VALUES ('a')")
+        with pytest.raises(django.db.IntegrityError) as excinfo:
+            cursor.execute("INSERT INTO item (name) VALUES ('a') RETURNING pk")
+
+    assert str(excinfo.value) == "UNIQUE constraint failed: item.name"
+
+
+def test_savepoint_opens_while_returning_cursor_half_read(
+    target: base.DatabaseWrapper,
+) -> None:
+    with target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT)")
+        cursor.execute("BEGIN")
+        cursor.execute("INSERT INTO item (name) VALUES ('a'), ('b') RETURNING pk")
+        first_row = cursor.fetchone()
+        with target.cursor() as savepoint_cursor:
+            savepoint_cursor.execute("SAVEPOINT item_savepoint")
+            savepoint_cursor.execute("RELEASE item_savepoint")
+        rest = cursor.fetchall()
+        cursor.execute("COMMIT")
+
+    assert first_row == (1,)
+    assert rest == [(2,)]
+
+
+def test_returning_cursor_keeps_driver_metadata(
+    target: base.DatabaseWrapper,
+) -> None:
+    with target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT)")
+        cursor.execute(
+            "INSERT INTO item (name) VALUES ('a'), ('b'), ('c') RETURNING pk, name"
+        )
+        description = cursor.description
+        rowcount = cursor.rowcount
+        lastrowid = cursor.lastrowid
+        first_rows = cursor.fetchmany()
+        second_rows = cursor.fetchmany(1)
+        rest = list(cursor)
+
+    assert description == (
+        ("pk", None, None, None, None, None, None),
+        ("name", None, None, None, None, None, None),
+    )
+    assert rowcount == -1
+    assert lastrowid is None
+    assert first_rows == [(1, "a")]
+    assert second_rows == [(2, "b")]
+    assert rest == [(3, "c")]
