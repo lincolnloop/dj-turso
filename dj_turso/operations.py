@@ -84,16 +84,12 @@ EPOCH_MICROSECONDS_TEMPLATE = (
 # Back from epoch microseconds to the form of the temporal operand: datetime, bare
 # time (wrapping at midnight) or date (whole days, as Django's date + timedelta).
 MICROSECONDS = "((({total} %% 1000000) + 1000000) %% 1000000)"
-SECONDS = f"(({{total}} - {MICROSECONDS}) / 1000000)"
-FRACTION_SUFFIX = (
-    f"CASE WHEN {MICROSECONDS} THEN PRINTF('.%%06d', {MICROSECONDS}) ELSE '' END"
-)
 FROM_EPOCH_MICROSECONDS = (
-    f"CASE WHEN INSTR({{temporal}}, ' ') THEN DATETIME({SECONDS}, 'unixepoch') "
-    f"|| {FRACTION_SUFFIX} "
-    f"WHEN INSTR({{temporal}}, ':') THEN TIME({SECONDS}, 'unixepoch') "
-    f"|| {FRACTION_SUFFIX} "
-    f"ELSE DATE({SECONDS}, 'unixepoch') END"
+    "STRFTIME(CASE WHEN INSTR({temporal}, ' ') THEN '%%Y-%%m-%%d %%H:%%M:%%S' "
+    "WHEN INSTR({temporal}, ':') THEN '%%H:%%M:%%S' ELSE '%%Y-%%m-%%d' END, "
+    f"({{total}} - {MICROSECONDS}) / 1000000, 'unixepoch') "
+    "|| CASE WHEN INSTR({temporal}, ':') THEN "
+    f"REPLACE(PRINTF('.%%06d', {MICROSECONDS}), '.000000', '') ELSE '' END"
 )
 
 
