@@ -1,0 +1,25 @@
+---
+services:
+  sqld:
+    # Stands in for Turso Cloud's HTTP API in the remote transport tests only; the
+    # engine behind it is libSQL, not Turso, so nothing else runs against it.
+    image: ghcr.io/tursodatabase/libsql-server:v0.24.33
+    environment:
+      # Public half of a test-only Ed25519 key: the server then demands a token, so
+      # the tests see a wrong one refused. The matching token is in tests/core.
+      - SQLD_AUTH_JWT_KEY=5gtfrdR2LNE1CnjuZWbFYykndXKfK4UYYIRIPqlxSLA
+    ports:
+      - "${DJ_TURSO_SQLD_PORT:-8880}:8080"
+    healthcheck:
+      # The image ships no curl or wget.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080
+          && printf 'GET /health HTTP/1.0\r\n\r\n' >&3
+          && grep -q '200 OK' <&3
+      interval: 2s
+      timeout: 5s
+      retries: 15

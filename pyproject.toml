@@ -83,6 +83,7 @@ skip_covered = true
 [tool.coverage.run]
 branch = true
 omit = ["tests/vendor/django/*"]
+patch = ["subprocess"]
 # `source_dirs`, not `source`: the XML report strips a `source` prefix from each
 # filename, so same-named files in different dirs would merge into one.
 source_dirs = ["dj_turso", "tests"]
@@ -110,6 +111,11 @@ exclude = [
 ]
 plugins = ["mypy_django_plugin.main"]
 strict = true
+
+# turso_serverless ships annotated source without a py.typed marker.
+[[tool.mypy.overrides]]
+follow_untyped_imports = true
+module = ["turso_serverless", "turso_serverless.*"]
 
 # The root config is the vendored suite's: its node ids stay repo-relative, and
 # tests/vendor/django goes on sys.path the way runtests.py puts Django's tests/ there.

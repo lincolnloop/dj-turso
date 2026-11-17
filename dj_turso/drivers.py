@@ -4,9 +4,26 @@ import collections.abc
 import contextlib
 import types
 import typing as t
+import urllib.parse
 
 import turso
 from turso import _turso
+
+# Remote names need the serverless extra; without it, local names still work.
+try:
+    import turso_serverless
+except ImportError as exc:
+    serverless_import_error: ImportError | None = exc
+else:
+    serverless_import_error = None
+
+# NAME schemes served over HTTP by turso_serverless; anything else is a local file.
+REMOTE_SCHEMES = frozenset({"http", "https", "libsql", "turso"})
+
+MISSING_SERVERLESS_EXTRA = (
+    "A database NAME that is a URL needs the serverless extra: "
+    "install dj-turso[serverless]."
+)
 
 
 class DatabaseModule(types.ModuleType):
@@ -25,9 +42,13 @@ class DatabaseModule(types.ModuleType):
     ProgrammingError: type[Exception]
     NotSupportedError: type[Exception]
 
-    def __init__(self, driver: types.ModuleType) -> None:
+    def __init__(
+        self,
+        driver: types.ModuleType,
+        connect: collections.abc.Callable[..., t.Any],
+    ) -> None:
         super().__init__(driver.__name__)
-        self.connect = driver.connect
+        self.connect = connect
         self.Error = driver.Error
         self.InterfaceError = driver.InterfaceError
         self.DatabaseError = driver.DatabaseError
@@ -40,7 +61,20 @@ class DatabaseModule(types.ModuleType):
 
 
 def get_database_module(name: str) -> DatabaseModule:
-    return DatabaseModule(turso)
+    if urllib.parse.urlsplit(name).scheme in REMOTE_SCHEMES:
+        if serverless_import_error is not None:
+            raise ImportError(MISSING_SERVERLESS_EXTRA) from serverless_import_error
+        return DatabaseModule(turso_serverless, connect_remote)
+    return DatabaseModule(turso, turso.connect)
+
+
+# Django's sqlite3 backend names the target "database"; turso_serverless, "url".
+def connect_remote(
+    database: str, *, auth_token: str | None = None, isolation_level: str | None = None
+) -> t.Any:
+    return turso_serverless.connect(
+        database, auth_token=auth_token, isolation_level=isolation_level
+    )
 
 
 # pyturso raises SQLite's generic error code, stdlib sqlite3's OperationalError, as
