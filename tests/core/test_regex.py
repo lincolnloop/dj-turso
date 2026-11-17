@@ -1,3 +1,5 @@
+import uuid
+
 import django.db
 import pytest
 from django.db.models import expressions
@@ -70,13 +72,13 @@ def test_regex_column_pattern_turso_cannot_compile_matches_nothing() -> None:
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("lookup", "pattern", "names"),
+    ("lookup", "names", "pattern"),
     [
-        pytest.param("name__regex", r"ba[rz]$", ["foobar", "foobaz"], id="class"),
-        pytest.param("name__regex", r"oo(f|b)", ["foobar", "foobaz"], id="alternation"),
-        pytest.param("name__regex", r"^b", ["barfoo"], id="anchor"),
-        pytest.param("name__regex", r"(?i)^B", ["barfoo"], id="inline-flag"),
-        pytest.param("name__iregex", r"FOO$", ["barfoo"], id="iregex"),
+        pytest.param("name__regex", ["foobar", "foobaz"], r"ba[rz]$", id="class"),
+        pytest.param("name__regex", ["foobar", "foobaz"], r"oo(f|b)", id="alternation"),
+        pytest.param("name__regex", ["barfoo"], r"^b", id="anchor"),
+        pytest.param("name__regex", ["barfoo"], r"(?i)^B", id="inline-flag"),
+        pytest.param("name__iregex", ["barfoo"], r"FOO$", id="iregex"),
     ],
 )
 def test_regex_turso_compiles_matches(
@@ -91,9 +93,11 @@ def test_regex_turso_compiles_matches(
     assert list(matches.values_list("name", flat=True)) == names
 
 
+# The check's cache lasts the process: a pattern of its own keeps the test independent.
 @pytest.mark.django_db
 def test_regex_pattern_is_checked_once() -> None:
-    queryset = models.Tag.objects.filter(name__regex="checked once").values_list(
+    pattern = f"checked once {uuid.uuid4().hex}"
+    queryset = models.Tag.objects.filter(name__regex=pattern).values_list(
         "name", flat=True
     )
 
@@ -104,10 +108,11 @@ def test_regex_pattern_is_checked_once() -> None:
 
     lookup_sql = (
         'SELECT "core_tag"."name" AS "name" FROM "core_tag" '
-        'WHERE "core_tag"."name" REGEXP \'checked once\''
+        'WHERE "core_tag"."name" REGEXP \'<pattern>\''
     )
-    assert [query["sql"] for query in first.captured_queries] == [
-        "SELECT regexp('checked once', '')",
-        lookup_sql,
-    ]
-    assert [query["sql"] for query in second.captured_queries] == [lookup_sql]
+    assert [
+        query["sql"].replace(pattern, "<pattern>") for query in first.captured_queries
+    ] == ["SELECT regexp('<pattern>', '')", lookup_sql]
+    assert [
+        query["sql"].replace(pattern, "<pattern>") for query in second.captured_queries
+    ] == [lookup_sql]
