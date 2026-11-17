@@ -1,6 +1,7 @@
 """Helpers shared by dj-turso's own test suites."""
 
 import contextlib
+import http
 import socket
 import threading
 
@@ -38,7 +39,7 @@ class CountingProxy:
         self.received_request_count = 0
         self.open_sockets: dict[socket.socket, socket.socket] = {}
         self.drop_next_request = False
-        self.answer_bodies: list[bytes] = []
+        self.answers: list[tuple[http.HTTPStatus, bytes]] = []
         threading.Thread(target=self.accept_connections, daemon=True).start()
 
     def wait_for_open_connection_count(self, count: int) -> int:
@@ -59,10 +60,12 @@ class CountingProxy:
             self.drop_next_request = True
 
     # The next requests reach the proxy whole and each gets one of these bodies, with
-    # status 200, in place of the server's answer; then its connection closes.
-    def answer_next_requests(self, *bodies: bytes) -> None:
+    # the status, in place of the server's answer; then its connection closes.
+    def answer_next_requests(
+        self, *bodies: bytes, status: http.HTTPStatus = http.HTTPStatus.OK
+    ) -> None:
         with self.condition:
-            self.answer_bodies.extend(bodies)
+            self.answers.extend((status, body) for body in bodies)
 
     def close(self) -> None:
         self.listener.close()
@@ -95,13 +98,15 @@ class CountingProxy:
                 with self.condition:
                     self.received_request_count += 1
                     dropping, self.drop_next_request = self.drop_next_request, False
-                    answer = self.answer_bodies.pop(0) if self.answer_bodies else None
+                    answer = self.answers.pop(0) if self.answers else None
                 if dropping:
                     break
                 if answer is not None:
+                    status, body = answer
                     client.sendall(
-                        b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
-                        b"Content-Length: %d\r\n\r\n%s" % (len(answer), answer)
+                        b"HTTP/1.1 %d %s\r\nConnection: close\r\n"
+                        b"Content-Length: %d\r\n\r\n%s"
+                        % (status, status.phrase.encode(), len(body), body)
                     )
                     break
                 upstream.sendall(request)

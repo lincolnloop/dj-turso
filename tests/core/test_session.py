@@ -1,4 +1,5 @@
 import collections.abc
+import http
 import http.client
 import os
 import resource
@@ -297,3 +298,40 @@ def test_stream_expiry_inside_transaction_loses_transaction_unsent(
     ]
     assert proxy.received_request_count == 2
     assert proxied_target.is_usable() is False
+
+
+# sqld names the error "message" where Turso Cloud says "error"; as upstream, only
+# a string counts.
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        pytest.param(
+            b'{"error": "bad baton", "message": "stream expired"}',
+            "HTTP status 400: bad baton",
+            id="error",
+        ),
+        pytest.param(
+            b'{"error": 5, "message": "stream expired"}',
+            "HTTP status 400: stream expired",
+            id="message",
+        ),
+        pytest.param(b'{"error": 5}', "HTTP status 400", id="no-string"),
+        pytest.param(b'["stream expired"]', "HTTP status 400", id="not-object"),
+    ],
+)
+def test_error_status_raises_operational_error_with_server_message(
+    body: bytes,
+    message: str,
+    proxied_target: base.DatabaseWrapper,
+    proxy: utils.CountingProxy,
+) -> None:
+    proxied_target.ensure_connection()
+    proxy.answer_next_requests(body, status=http.HTTPStatus.BAD_REQUEST)
+
+    with (
+        proxied_target.cursor() as cursor,
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == message

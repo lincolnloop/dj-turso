@@ -200,11 +200,15 @@ def is_closed_by_server(connection: http.client.HTTPConnection) -> bool:
         return bool(selector.select(timeout=0))
 
 
-# The server's JSON "error", as upstream reports a non-200 status; bodies that are
-# not JSON carry none.
+# The server's JSON "error" (Turso Cloud) or "message" (sqld), as upstream reports a
+# non-200 status; bodies that are not JSON carry none.
 def get_status_message(status: int, raw: bytes) -> str:
     try:
-        error = json.loads(raw)["error"]
-    except (KeyError, TypeError, ValueError):
+        parsed = json.loads(raw)
+    except ValueError:
         return f"HTTP status {status}"
-    return f"HTTP status {status}: {error}"
+    if isinstance(parsed, dict):
+        for key in ("error", "message"):
+            if isinstance(parsed.get(key), str):
+                return f"HTTP status {status}: {parsed[key]}"
+    return f"HTTP status {status}"
