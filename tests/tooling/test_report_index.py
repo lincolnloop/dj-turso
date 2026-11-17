@@ -24,6 +24,13 @@ def test_report_prints_counts_by_kind_and_cause(tmp_path: pathlib.Path) -> None:
         name = "non-UTC time zone"
         kind = "unsupported"
         tests = ["tests/vendor/django/timezones/tests.py::NewDatabaseTests"]
+
+        [[cause]]
+        name = "one process per database file"
+        kind = "turso-limitation"
+        raises = "builtins.AssertionError"
+        match = "File is locked by another process"
+        tests = ["tests/vendor/django/migrations/test_loader.py::LoaderTests"]
         """
     )
 
@@ -41,6 +48,8 @@ def test_report_prints_counts_by_kind_and_cause(tmp_path: pathlib.Path) -> None:
         "  1 Binary missing\n"
         "unsupported 1\n"
         "  1 non-UTC time zone\n"
+        "turso-limitation 1\n"
+        "  1 one process per database file\n"
         "upstream-bug 0\n"
         "stdlib-internal 0\n"
     )

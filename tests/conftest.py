@@ -11,7 +11,10 @@ import pytest
 
 from tests import gap_index
 
-MARKER_KINDS = {f"turso_{kind.replace('-', '_')}": kind for kind in gap_index.KINDS}
+MARKER_KINDS = {
+    f"turso_{kind.removeprefix('turso-').replace('-', '_')}": kind
+    for kind in gap_index.KINDS
+}
 
 causes_key = pytest.StashKey[list[gap_index.Cause]]()
 
@@ -29,7 +32,8 @@ def pytest_configure(config: pytest.Config) -> None:
     for marker_name, kind in MARKER_KINDS.items():
         config.addinivalue_line(
             "markers",
-            f"{marker_name}(name, reason='', issue=''): known {kind} gap, "
+            f"{marker_name}(name, reason='', issue='', raises='', match=''): "
+            f"known {kind} gap, "
             "marked as the gap index marks it",
         )
     with raise_usage_error():
@@ -120,6 +124,15 @@ def get_mark(cause: gap_index.Cause) -> pytest.MarkDecorator:
         case "unsupported":
             return pytest.mark.xfail(
                 strict=True, raises=django.db.NotSupportedError, reason=cause.name
+            )
+        case "turso-limitation":
+            return pytest.mark.xfail(
+                strict=True,
+                raises=pytest.RaisesExc(
+                    gap_index.get_exception_class(cause.raises, cause.name),
+                    match=cause.match,
+                ),
+                reason=cause.name,
             )
         case "upstream-bug":
             return pytest.mark.xfail(strict=True, reason=f"{cause.name}: {cause.issue}")

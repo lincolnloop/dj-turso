@@ -34,6 +34,46 @@ def test_unsupported_entry_passes_only_on_not_supported_error(
     result.assert_outcomes(failed=1, xfailed=1)
 
 
+def test_turso_limitation_entry_passes_only_on_expected_error(
+    index_pytester: pytest.Pytester,
+) -> None:
+    index_pytester.makepyfile(
+        test_sample="""
+        def test_raises_expected():
+            raise ValueError("Locking error: File is locked by another process")
+
+        def test_raises_other_message():
+            raise ValueError("Locking error: disk full")
+
+        def test_raises_other_class():
+            raise TypeError("Locking error: File is locked by another process")
+
+        def test_passes():
+            pass
+        """
+    )
+    index_pytester.makefile(
+        ".toml",
+        index="""
+        [[cause]]
+        name = "one process per database file"
+        kind = "turso-limitation"
+        raises = "builtins.ValueError"
+        match = "File is locked by another process"
+        tests = [
+            "test_sample.py::test_raises_expected",
+            "test_sample.py::test_raises_other_message",
+            "test_sample.py::test_raises_other_class",
+            "test_sample.py::test_passes",
+        ]
+        """,
+    )
+
+    result = index_pytester.runpytest("-p", "no:django")
+
+    result.assert_outcomes(failed=3, xfailed=1)
+
+
 def test_pending_entry_marks_failing_test_expected_failure(
     index_pytester: pytest.Pytester,
 ) -> None:
@@ -290,6 +330,40 @@ def test_module_entry_marks_every_test_in_module(
         pytest.param(
             """
             [[cause]]
+            name = "one process"
+            kind = "turso-limitation"
+            match = "File is locked"
+            tests = ["test_sample.py::test_fails"]
+            """,
+            "cause 'one process': turso-limitation needs raises and match",
+            id="turso-limitation-without-raises",
+        ),
+        pytest.param(
+            """
+            [[cause]]
+            name = "one process"
+            kind = "turso-limitation"
+            raises = "builtins.ValueError"
+            tests = ["test_sample.py::test_fails"]
+            """,
+            "cause 'one process': turso-limitation needs raises and match",
+            id="turso-limitation-without-match",
+        ),
+        pytest.param(
+            """
+            [[cause]]
+            name = "one process"
+            kind = "turso-limitation"
+            raises = "builtins.LockError"
+            match = "File is locked"
+            tests = ["test_sample.py::test_fails"]
+            """,
+            "cause 'one process': cannot import raises 'builtins.LockError'",
+            id="turso-limitation-unknown-raises",
+        ),
+        pytest.param(
+            """
+            [[cause]]
             name = "dates"
             kind = "pending"
             tests = ["test_sample.py::test_fails"]
@@ -376,13 +450,21 @@ def test_turso_markers_expand_like_index_kinds(
         @pytest.mark.turso_stdlib_internal("sqlite3 limits", reason="getlimit")
         def test_stdlib_internal():
             raise AssertionError
+
+        @pytest.mark.turso_limitation(
+            "one process per database file",
+            raises="builtins.ValueError",
+            match="File is locked",
+        )
+        def test_turso_limitation():
+            raise ValueError("File is locked by another process")
         """
     )
     index_pytester.makefile(".toml", index="")
 
     result = index_pytester.runpytest("-p", "no:django", "--strict-markers")
 
-    result.assert_outcomes(skipped=1, xfailed=3)
+    result.assert_outcomes(skipped=1, xfailed=4)
 
 
 def test_turso_unsupported_marker_fails_on_other_errors(

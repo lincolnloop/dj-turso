@@ -1,6 +1,8 @@
 # Known gaps on pyturso, applied by tests/conftest.py. One [[cause]] per reason:
-# name, kind (pending | unsupported | upstream-bug | stdlib-internal), reason,
-# issue (upstream-bug), tests (node ids or class/module prefixes).
+# name, kind (pending | unsupported | turso-limitation | upstream-bug |
+# stdlib-internal), reason, issue (upstream-bug), raises and match (the exception
+# class and message pattern a turso-limitation test fails with), tests (node ids or
+# class/module prefixes).
 
 [[cause]]
 kind = "unsupported"
@@ -158,8 +160,10 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
+kind = "turso-limitation"
+match = 'Locking error: Failed locking file .+\. File is locked by another process'
 name = "second process cannot open the test database"
+raises = "builtins.AssertionError"
 reason = "A subprocess the test starts opens the test database file, which Turso locks to one process"
 tests = [
   "tests/vendor/django/migrations/test_loader.py::LoaderTests::test_loading_order_does_not_create_circular_dependency",

@@ -2,10 +2,17 @@
 
 import dataclasses
 import pathlib
+import pkgutil
 import tomllib
 import typing as t
 
-KINDS = ("pending", "unsupported", "upstream-bug", "stdlib-internal")
+KINDS = (
+    "pending",
+    "unsupported",
+    "turso-limitation",
+    "upstream-bug",
+    "stdlib-internal",
+)
 
 
 class InvalidIndexError(Exception):
@@ -42,6 +49,16 @@ class MissingReasonError(InvalidIndexError):
         super().__init__(f"cause {cause!r}: stdlib-internal needs a reason")
 
 
+class MissingExpectedErrorError(InvalidIndexError):
+    def __init__(self, cause: str) -> None:
+        super().__init__(f"cause {cause!r}: turso-limitation needs raises and match")
+
+
+class UnknownRaisesError(InvalidIndexError):
+    def __init__(self, cause: str, raises: str) -> None:
+        super().__init__(f"cause {cause!r}: cannot import raises {raises!r}")
+
+
 class DuplicateTestError(InvalidIndexError):
     def __init__(self, test: str) -> None:
         super().__init__(f"{test} listed more than once")
@@ -59,6 +76,8 @@ class Cause:
     tests: tuple[str, ...]
     reason: str = ""
     issue: str = ""
+    raises: str = ""
+    match: str = ""
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -67,6 +86,10 @@ class Cause:
             raise MissingIssueError(self.name)
         if self.kind == "stdlib-internal" and not self.reason:
             raise MissingReasonError(self.name)
+        if self.kind == "turso-limitation":
+            if not (self.raises and self.match):
+                raise MissingExpectedErrorError(self.name)
+            get_exception_class(self.raises, self.name)
 
 
 def load_index(path: pathlib.Path) -> list[Cause]:
@@ -104,6 +127,14 @@ def check_duplicate_tests(causes: list[Cause]) -> None:
             if test in seen:
                 raise DuplicateTestError(test)
             seen.add(test)
+
+
+def get_exception_class(raises: str, cause: str) -> type[BaseException]:
+    try:
+        exception_class: type[BaseException] = pkgutil.resolve_name(raises)
+    except (AttributeError, ImportError, ValueError) as exc:
+        raise UnknownRaisesError(cause, raises) from exc
+    return exception_class
 
 
 # The module, each enclosing class, then the test itself.
