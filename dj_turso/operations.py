@@ -24,6 +24,50 @@ EXTRACT_TEMPLATES = {
     "second": "CAST(STRFTIME('%%S', {value}) AS INTEGER)",
 }
 
+# Months back to the quarter's first, and days back to Monday.
+MONTHS_INTO_QUARTER = "(CAST(STRFTIME('%%m', {value}) AS INTEGER) - 1) %% 3"
+DAYS_INTO_WEEK = "(CAST(STRFTIME('%%w', {value}) AS INTEGER) + 6) %% 7"
+
+DATE_TRUNC_TEMPLATES = {
+    "year": "STRFTIME('%%Y-01-01', {value})",
+    "quarter": (
+        "DATE({value}, 'start of month', "
+        f"PRINTF('-%%d months', {MONTHS_INTO_QUARTER}))"
+    ),
+    "month": "STRFTIME('%%Y-%%m-01', {value})",
+    "week": f"DATE({{value}}, PRINTF('-%%d days', {DAYS_INTO_WEEK}))",
+    "day": "DATE({value})",
+}
+
+DATETIME_TRUNC_TEMPLATES = {
+    "year": "STRFTIME('%%Y-01-01 00:00:00', {value})",
+    "quarter": (
+        "DATETIME({value}, 'start of month', "
+        f"PRINTF('-%%d months', {MONTHS_INTO_QUARTER}))"
+    ),
+    "month": "STRFTIME('%%Y-%%m-01 00:00:00', {value})",
+    "week": (
+        f"DATETIME({{value}}, 'start of day', PRINTF('-%%d days', {DAYS_INTO_WEEK}))"
+    ),
+    "day": "STRFTIME('%%Y-%%m-%%d 00:00:00', {value})",
+    "hour": "STRFTIME('%%Y-%%m-%%d %%H:00:00', {value})",
+    "minute": "STRFTIME('%%Y-%%m-%%d %%H:%%M:00', {value})",
+    "second": "STRFTIME('%%Y-%%m-%%d %%H:%%M:%%S', {value})",
+}
+
+TIME_TRUNC_TEMPLATES = {
+    "hour": "STRFTIME('%%H:00:00', {value})",
+    "minute": "STRFTIME('%%H:%%M:00', {value})",
+    "second": "STRFTIME('%%H:%%M:%%S', {value})",
+}
+
+# TIME() drops the fraction, which Django keeps to the microsecond.
+DATETIME_CAST_TIME_TEMPLATE = (
+    "TIME({value}) || CASE WHEN INSTR({value}, '.') THEN "
+    "'.' || SUBSTR(SUBSTR({value}, INSTR({value}, '.') + 1) || '000000', 1, 6) "
+    "ELSE '' END"
+)
+
 
 class DatabaseOperations(sqlite_operations.DatabaseOperations):
     # Django's sqlite3 backend gates this on the stdlib's SQLite; Turso's dialect is
@@ -46,6 +90,48 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
         self, lookup_type: str, sql: str, params: t.Sequence[t.Any]
     ) -> t.Any:
         return get_extract_sql(lookup_type, "time", sql, params)
+
+    def date_trunc_sql(
+        self,
+        lookup_type: str,
+        sql: str,
+        params: t.Sequence[t.Any],
+        tzname: str | None = None,
+    ) -> tuple[str, tuple[t.Any, ...]]:
+        self.check_time_zone(tzname)
+        return get_trunc_sql(DATE_TRUNC_TEMPLATES, lookup_type, "date", sql, params)
+
+    # django-stubs types this as a bare string; Django returns (sql, params).
+    def datetime_trunc_sql(
+        self, lookup_type: str, sql: str, params: t.Sequence[t.Any], tzname: str | None
+    ) -> t.Any:
+        self.check_time_zone(tzname)
+        return get_trunc_sql(
+            DATETIME_TRUNC_TEMPLATES, lookup_type, "datetime", sql, params
+        )
+
+    # django-stubs types this as a bare string; Django returns (sql, params).
+    def time_trunc_sql(
+        self,
+        lookup_type: str,
+        sql: str,
+        params: t.Sequence[t.Any],
+        tzname: str | None = None,
+    ) -> t.Any:
+        self.check_time_zone(tzname)
+        return get_trunc_sql(TIME_TRUNC_TEMPLATES, lookup_type, "time", sql, params)
+
+    def datetime_cast_date_sql(
+        self, sql: str, params: t.Sequence[t.Any], tzname: str | None
+    ) -> tuple[str, tuple[t.Any, ...]]:
+        self.check_time_zone(tzname)
+        return fill_template("DATE({value})", sql, params)
+
+    def datetime_cast_time_sql(
+        self, sql: str, params: t.Sequence[t.Any], tzname: str | None
+    ) -> tuple[str, tuple[t.Any, ...]]:
+        self.check_time_zone(tzname)
+        return fill_template(DATETIME_CAST_TIME_TEMPLATE, sql, params)
 
     # Values are stored in the database time zone, and Turso's date functions know
     # no other: any conversion would need a time zone database.
@@ -85,6 +171,20 @@ def get_extract_sql(
         template = EXTRACT_TEMPLATES[lookup_type]
     except KeyError as exc:
         raise exceptions.UnknownLookupTypeError(lookup_type, value_type) from exc
+    return fill_template(template, sql, params)
+
+
+def get_trunc_sql(
+    templates: dict[str, str],
+    kind: str,
+    value_type: str,
+    sql: str,
+    params: t.Sequence[t.Any],
+) -> tuple[str, tuple[t.Any, ...]]:
+    try:
+        template = templates[kind]
+    except KeyError as exc:
+        raise exceptions.UnknownTruncKindError(kind, value_type) from exc
     return fill_template(template, sql, params)
 
 

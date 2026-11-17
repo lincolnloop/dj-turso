@@ -38,3 +38,9 @@ class TimeZoneConversionNotSupportedError(
 class UnknownLookupTypeError(TursoBackendError, ValueError):
     def __init__(self, lookup_type: str, value_type: str) -> None:
         super().__init__(f"Turso cannot extract {lookup_type!r} from a {value_type}.")
+
+
+# A database error, as Django's other backends raise for an unknown unit.
+class UnknownTruncKindError(TursoBackendError, django.db.DataError):
+    def __init__(self, kind: str, value_type: str) -> None:
+        super().__init__(f"Turso cannot truncate a {value_type} to {kind!r}.")

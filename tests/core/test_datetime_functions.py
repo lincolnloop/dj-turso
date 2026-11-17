@@ -2,7 +2,7 @@ import datetime as dt
 
 import django.db
 import pytest
-from django.db.models import functions
+from django.db.models import expressions, functions
 from django.utils import timezone
 from pytest_django import Settings
 
@@ -118,6 +118,150 @@ def test_extract_in_other_time_zone_raises_not_supported() -> None:
     queryset = models.Event.objects.values_list(
         functions.ExtractYear("start"), flat=True
     )
+
+    with (
+        timezone.override("Europe/Paris"),
+        pytest.raises(django.db.NotSupportedError) as excinfo,
+    ):
+        list(queryset)
+
+    assert str(excinfo.value) == (
+        "Turso's date functions cannot convert from the database time zone 'UTC' "
+        "to 'Europe/Paris'. Query in 'UTC' instead."
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "kind"),
+    [
+        pytest.param(dt.datetime(2015, 1, 1, tzinfo=dt.UTC), "year", id="year"),
+        pytest.param(dt.datetime(2015, 7, 1, tzinfo=dt.UTC), "quarter", id="quarter"),
+        pytest.param(dt.datetime(2015, 8, 1, tzinfo=dt.UTC), "month", id="month"),
+        pytest.param(dt.datetime(2015, 8, 10, tzinfo=dt.UTC), "week", id="week"),
+        pytest.param(dt.datetime(2015, 8, 16, tzinfo=dt.UTC), "day", id="day"),
+        pytest.param(dt.datetime(2015, 8, 16, 23, tzinfo=dt.UTC), "hour", id="hour"),
+        pytest.param(
+            dt.datetime(2015, 8, 16, 23, 30, tzinfo=dt.UTC), "minute", id="minute"
+        ),
+        pytest.param(
+            dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC), "second", id="second"
+        ),
+    ],
+)
+def test_trunc_rounds_datetime_down(expected: dt.datetime, kind: str) -> None:
+    models.Event.objects.create(start=dt.datetime(2015, 8, 16, 23, 30, 50, 321, dt.UTC))
+
+    values = models.Event.objects.values_list(functions.Trunc("start", kind), flat=True)
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "kind"),
+    [
+        pytest.param(dt.date(2015, 1, 1), "year", id="year"),
+        pytest.param(dt.date(2015, 7, 1), "quarter", id="quarter"),
+        pytest.param(dt.date(2015, 8, 1), "month", id="month"),
+        pytest.param(dt.date(2015, 8, 10), "week", id="week"),
+        pytest.param(dt.date(2015, 8, 16), "day", id="day"),
+    ],
+)
+def test_trunc_rounds_date_down(expected: dt.date, kind: str) -> None:
+    models.Event.objects.create(day=dt.date(2015, 8, 16))
+
+    values = models.Event.objects.values_list(functions.Trunc("day", kind), flat=True)
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "kind"),
+    [
+        pytest.param(dt.time(23), "hour", id="hour"),
+        pytest.param(dt.time(23, 30), "minute", id="minute"),
+        pytest.param(dt.time(23, 30, 50), "second", id="second"),
+    ],
+)
+def test_trunc_rounds_time_down(expected: dt.time, kind: str) -> None:
+    models.Event.objects.create(time=dt.time(23, 30, 50, 321))
+
+    values = models.Event.objects.values_list(functions.Trunc("time", kind), flat=True)
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+def test_trunc_null_is_null() -> None:
+    models.Event.objects.create()
+
+    values = models.Event.objects.values_list(functions.TruncDay("day"), flat=True)
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
+def test_trunc_unknown_kind_raises() -> None:
+    queryset = models.Event.objects.values_list(
+        functions.Trunc("start", "fortnight"), flat=True
+    )
+
+    with pytest.raises(exceptions.UnknownTruncKindError) as excinfo:
+        list(queryset)
+
+    assert str(excinfo.value) == "Turso cannot truncate a datetime to 'fortnight'."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "start"),
+    [
+        pytest.param(
+            dt.time(23, 30, 50, 321),
+            dt.datetime(2015, 8, 16, 23, 30, 50, 321, dt.UTC),
+            id="microseconds",
+        ),
+        pytest.param(
+            dt.time(23, 30, 50),
+            dt.datetime(2015, 8, 16, 23, 30, 50, tzinfo=dt.UTC),
+            id="whole-seconds",
+        ),
+    ],
+)
+def test_trunc_time_keeps_time_of_datetime(
+    expected: dt.time, start: dt.datetime
+) -> None:
+    models.Event.objects.create(start=start)
+
+    values = models.Event.objects.values_list(functions.TruncTime("start"), flat=True)
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+def test_trunc_date_keeps_date_of_datetime() -> None:
+    models.Event.objects.create(start=dt.datetime(2015, 8, 16, 23, 30, 50, 321, dt.UTC))
+
+    values = models.Event.objects.values_list(functions.TruncDate("start"), flat=True)
+
+    assert list(values) == [dt.date(2015, 8, 16)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "function",
+    [
+        pytest.param(functions.TruncDate, id="date"),
+        pytest.param(functions.TruncTime, id="time"),
+        pytest.param(functions.TruncDay, id="trunc"),
+    ],
+)
+def test_datetime_function_in_other_time_zone_raises_not_supported(
+    function: type[expressions.Func],
+) -> None:
+    queryset = models.Event.objects.values_list(function("start"), flat=True)
 
     with (
         timezone.override("Europe/Paris"),
