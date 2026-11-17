@@ -7,6 +7,7 @@ dev = [
   "argon2-cffi==25.1.0",
   "bcrypt==5.0.0",
   "build==1.6.1",
+  "defusedxml==0.7.1",
   "django-stubs==6.1.2",
   "docutils==0.23",
   "hatch-vcs==0.5.0",
@@ -25,6 +26,7 @@ dev = [
   "ruff==0.17.4",
   "sqlparse==0.6.1",
   "turso-serverless==0.1.0",
+  "types-defusedxml==0.7.0.20260504",
   "tzdata==2026.6",
 ]
 

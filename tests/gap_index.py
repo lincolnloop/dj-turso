@@ -118,3 +118,9 @@ def check_duplicate_tests(causes: list[Cause]) -> None:
                 if (test, target) in seen:
                     raise DuplicateTestError(test, target)
                 seen.add((test, target))
+
+
+# The module, each enclosing class, then the test itself.
+def get_node_id_prefixes(node_id: str) -> list[str]:
+    parts = node_id.partition("[")[0].split("::")
+    return [*("::".join(parts[:end]) for end in range(1, len(parts))), node_id]

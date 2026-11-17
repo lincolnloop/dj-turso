@@ -32,6 +32,16 @@ uv run python scripts/vendor_django.py --source <django checkout>/tests
 
 The script replaces `django/` entirely. Update the tag and commit above.
 
+## Gaps
+
+Failing tests go in [`../index.toml`](../index.toml) by node id; `tests/conftest.py`
+marks them. Add a run's new failures as `unclassified` pending, then print the counts:
+
+```sh
+uv run python -m scripts.sync_index --junit junit-vendor-pyturso.xml --target pyturso
+uv run python -m scripts.report_index
+```
+
 ## License
 
 The vendored files are Django's, under Django's BSD 3-clause license:

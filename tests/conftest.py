@@ -65,7 +65,7 @@ def pytest_collection_modifyitems(
                         **marker.kwargs,
                     )
                 item.add_marker(get_mark(cause))
-        for prefix in get_node_id_prefixes(item.nodeid):
+        for prefix in gap_index.get_node_id_prefixes(item.nodeid):
             if prefix in causes_by_entry:
                 item.add_marker(get_mark(causes_by_entry[prefix]))
 
@@ -110,7 +110,9 @@ def check_stale_entries(
         (config.rootpath / node_id.partition("::")[0]).resolve() for node_id in node_ids
     } - narrowed_files
     collected = {
-        prefix for node_id in node_ids for prefix in get_node_id_prefixes(node_id)
+        prefix
+        for node_id in node_ids
+        for prefix in gap_index.get_node_id_prefixes(node_id)
     }
     stale = sorted(
         {
@@ -123,12 +125,6 @@ def check_stale_entries(
     )
     if stale:
         raise gap_index.StaleEntriesError(stale)
-
-
-# The module, each enclosing class, then the test itself.
-def get_node_id_prefixes(node_id: str) -> list[str]:
-    parts = node_id.partition("[")[0].split("::")
-    return [*("::".join(parts[:end]) for end in range(1, len(parts))), node_id]
 
 
 # pytest prints a usage error's message alone and exits with its usage status.
