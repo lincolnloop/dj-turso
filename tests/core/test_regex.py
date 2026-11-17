@@ -1,5 +1,6 @@
 import django.db
 import pytest
+from django.db.models import expressions
 from django.test import utils as test_utils
 
 from tests.core import models
@@ -29,6 +30,42 @@ def test_regex_turso_cannot_compile_raises_not_supported_error(
         f"Turso cannot compile the regular expression {pattern!r}: its REGEXP "
         "follows the syntax of Rust's regex crate, not Python's re module."
     )
+
+
+@pytest.mark.django_db
+def test_regex_value_turso_cannot_compile_raises_not_supported_error() -> None:
+    models.Tag.objects.create(name="foobar")
+    queryset = models.Tag.objects.filter(name__regex=expressions.Value(r"b(.).*b\1"))
+
+    with pytest.raises(django.db.NotSupportedError) as excinfo:
+        list(queryset)
+
+    assert str(excinfo.value) == (
+        "Turso cannot compile the regular expression 'b(.).*b\\\\1': its REGEXP "
+        "follows the syntax of Rust's regex crate, not Python's re module."
+    )
+
+
+@pytest.mark.django_db
+def test_regex_value_turso_compiles_matches() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in ["bar", "foo"])
+
+    names = models.Tag.objects.filter(name__regex=expressions.Value("^b")).values_list(
+        "name", flat=True
+    )
+
+    assert list(names) == ["bar"]
+
+
+@pytest.mark.django_db
+def test_regex_column_pattern_turso_cannot_compile_matches_nothing() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in ["bar", "(?=b)"])
+
+    names = models.Tag.objects.filter(name__regex=expressions.F("name")).values_list(
+        "name", flat=True
+    )
+
+    assert list(names) == ["bar"]
 
 
 @pytest.mark.django_db

@@ -57,12 +57,8 @@ class SQLCompiler(compiler.SQLCompiler):
     def compile(self, node: t.Any) -> t.Any:
         if isinstance(node, HASH_FUNCTIONS):
             raise exceptions.HashFunctionNotSupportedError(type(node).__name__)
-        if (
-            isinstance(node, lookups.Regex)
-            and node.rhs_is_direct_value()
-            and not is_regex_compilable(self.using, node.lookup_name, node.rhs)
-        ):
-            raise exceptions.RegexNotSupportedError(node.rhs)
+        if isinstance(node, lookups.Regex):
+            check_regex(self.using, node)
         if (
             isinstance(node, expressions.DurationExpression)
             and node.connector in DATE_ARITHMETIC_CONNECTORS
@@ -101,6 +97,23 @@ class SQLUpdateCompiler(SQLCompiler, compiler.SQLUpdateCompiler):
 
 class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
     pass
+
+
+# A pattern known only once the query runs, such as a column's, goes unchecked.
+def check_regex(alias: str | None, node: lookups.Regex) -> None:
+    pattern = get_literal_pattern(node)
+    if pattern is not None and not is_regex_compilable(
+        alias, node.lookup_name, pattern
+    ):
+        raise exceptions.RegexNotSupportedError(pattern)
+
+
+def get_literal_pattern(node: lookups.Regex) -> t.Any:
+    if node.rhs_is_direct_value():
+        return node.rhs
+    if isinstance(node.rhs, expressions.Value):
+        return node.rhs.value
+    return None
 
 
 # Turso's regexp() is NULL for a pattern its Rust regex crate cannot compile, which
