@@ -30,6 +30,24 @@ DATABASES = {
 }
 ```
 
+## Regular expressions
+
+`regex` and `iregex` lookups run on Turso's `REGEXP`, which follows the syntax of
+[Rust's regex crate](https://docs.rs/regex/latest/regex/#syntax), not Python's `re`:
+
+```python
+Tag.objects.filter(name__regex=r"^ba[rz]")  # works
+Tag.objects.filter(name__regex=r"b(.).*b\1")  # raises NotSupportedError
+```
+
+- A pattern Turso cannot compile, such as a backreference or lookaround, raises
+  `NotSupportedError` before the query runs. Each pattern is checked against the
+  database once per process.
+- A pattern from a column, such as `name__regex=F("pattern")`, is not checked: one Turso
+  cannot compile matches no rows.
+- `$` matches only at the end of the text, where Python's `re` also matches before a
+  final newline. Use `(?m)` for the end of any line.
+
 ## Running the tests
 
 The remote transport tests need a local server:

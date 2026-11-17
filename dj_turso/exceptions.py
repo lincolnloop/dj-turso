@@ -37,3 +37,11 @@ class UnknownLookupTypeError(TursoBackendError, ValueError):
 class UnknownTruncKindError(TursoBackendError, django.db.DataError):
     def __init__(self, kind: str, value_type: str) -> None:
         super().__init__(f"Turso cannot truncate a {value_type} to {kind!r}.")
+
+
+class RegexNotSupportedError(TursoBackendError, django.db.NotSupportedError):
+    def __init__(self, pattern: str) -> None:
+        super().__init__(
+            f"Turso cannot compile the regular expression {pattern!r}: its REGEXP "
+            "follows the syntax of Rust's regex crate, not Python's re module."
+        )

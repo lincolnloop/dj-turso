@@ -1,12 +1,14 @@
 """Native SQL for functions Django's sqlite3 backend runs in Python."""
 
 import collections.abc
+import functools
 import typing as t
 
-from django.db.models import aggregates, expressions, functions
+import django.db
+from django.db.models import aggregates, expressions, functions, lookups
 from django.db.models.sql import compiler
 
-from dj_turso import exceptions, operations
+from dj_turso import base, exceptions, operations
 
 SQLParams = tuple[str, tuple[t.Any, ...]]
 
@@ -48,6 +50,12 @@ class SQLCompiler(compiler.SQLCompiler):
     def compile(self, node: t.Any) -> t.Any:
         if isinstance(node, HASH_FUNCTIONS):
             raise exceptions.HashFunctionNotSupportedError(type(node).__name__)
+        if (
+            isinstance(node, lookups.Regex)
+            and node.rhs_is_direct_value()
+            and not is_regex_compilable(self.using, node.lookup_name, node.rhs)
+        ):
+            raise exceptions.RegexNotSupportedError(node.rhs)
         if isinstance(node, functions.Round) and has_negative_precision(node):
             return compile_round_left_of_point(self, node)
         if isinstance(node, aggregates.Aggregate):
@@ -75,6 +83,17 @@ class SQLUpdateCompiler(SQLCompiler, compiler.SQLUpdateCompiler):
 
 class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
     pass
+
+
+# Turso's regexp() is NULL for a pattern its Rust regex crate cannot compile, which
+# would silently match nothing. The probe sends the pattern as the lookup's operator.
+@functools.lru_cache
+def is_regex_compilable(alias: str, lookup_name: str, pattern: t.Any) -> bool:
+    connection = t.cast("base.DatabaseWrapper", django.db.connections[alias])
+    operand = connection.operators[lookup_name].removeprefix("REGEXP ")
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT regexp({operand}, '')", [pattern])
+        return cursor.fetchone()[0] is not None
 
 
 def has_negative_precision(node: functions.Round) -> bool:
