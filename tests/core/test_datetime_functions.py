@@ -2,7 +2,7 @@ import datetime as dt
 
 import django.db
 import pytest
-from django.db.models import expressions, fields, functions
+from django.db.models import aggregates, expressions, fields, functions
 from django.utils import timezone
 from pytest_django import Settings
 
@@ -379,6 +379,21 @@ def test_datetime_plus_null_duration_is_null() -> None:
 
 
 @pytest.mark.django_db
+def test_untyped_null_plus_duration_is_null() -> None:
+    models.Event.objects.create(duration=dt.timedelta(hours=1))
+
+    values = models.Event.objects.values_list(
+        expressions.ExpressionWrapper(
+            expressions.Value(None) + expressions.F("duration"),
+            output_field=fields.DateTimeField(),
+        ),
+        flat=True,
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
 def test_duration_times_number() -> None:
     models.Event.objects.create(duration=dt.timedelta(seconds=3))
 
@@ -442,3 +457,121 @@ def test_time_minus_time_gives_duration() -> None:
     assert list(values) == [
         dt.timedelta(hours=1, minutes=15, seconds=15, microseconds=2345)
     ]
+
+
+@pytest.mark.django_db
+def test_datetime_plus_window_duration_reads_each_row() -> None:
+    models.Event.objects.bulk_create(
+        [
+            models.Event(
+                start=dt.datetime(2015, 8, 16, tzinfo=dt.UTC),
+                duration=dt.timedelta(hours=1),
+            ),
+            models.Event(
+                start=dt.datetime(2015, 8, 17, tzinfo=dt.UTC),
+                duration=dt.timedelta(hours=2),
+            ),
+        ]
+    )
+
+    values = models.Event.objects.order_by("start").values_list(
+        expressions.F("start") + expressions.Window(aggregates.Max("duration")),
+        flat=True,
+    )
+
+    assert list(values) == [
+        dt.datetime(2015, 8, 16, 2, tzinfo=dt.UTC),
+        dt.datetime(2015, 8, 17, 2, tzinfo=dt.UTC),
+    ]
+
+
+@pytest.mark.django_db
+def test_aggregate_datetime_plus_aggregate_duration() -> None:
+    models.Event.objects.bulk_create(
+        [
+            models.Event(
+                start=dt.datetime(2015, 8, 16, tzinfo=dt.UTC),
+                duration=dt.timedelta(hours=2),
+            ),
+            models.Event(
+                start=dt.datetime(2015, 8, 17, tzinfo=dt.UTC),
+                duration=dt.timedelta(hours=1),
+            ),
+        ]
+    )
+
+    result = models.Event.objects.aggregate(
+        deadline=aggregates.Max("start") + aggregates.Max("duration")
+    )
+
+    assert result == {"deadline": dt.datetime(2015, 8, 17, 2, tzinfo=dt.UTC)}
+
+
+@pytest.mark.django_db
+def test_date_arithmetic_check_constraint_rejects_row() -> None:
+    start = dt.datetime(2015, 8, 16, tzinfo=dt.UTC)
+    models.Shift.objects.create(
+        start=start, end=start + dt.timedelta(hours=1), duration=dt.timedelta(hours=1)
+    )
+
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        models.Shift.objects.create(
+            start=start,
+            end=start + dt.timedelta(hours=3),
+            duration=dt.timedelta(hours=2),
+        )
+
+    assert str(excinfo.value) == "CHECK constraint failed: shift_ends_within_duration"
+
+
+@pytest.mark.django_db
+def test_date_arithmetic_unique_index_rejects_duplicate() -> None:
+    models.Shift.objects.create(
+        start=dt.datetime(2015, 8, 16, 1, tzinfo=dt.UTC),
+        end=dt.datetime(2015, 8, 16, 2, tzinfo=dt.UTC),
+        duration=dt.timedelta(hours=1),
+    )
+
+    # Turso's message spells out the whole indexed expression.
+    with pytest.raises(django.db.IntegrityError):
+        models.Shift.objects.create(
+            start=dt.datetime(2015, 8, 16, tzinfo=dt.UTC),
+            end=dt.datetime(2015, 8, 16, 2, tzinfo=dt.UTC),
+            duration=dt.timedelta(hours=2),
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("connector", "expression"),
+    [
+        pytest.param(
+            "#",
+            expressions.CombinedExpression(
+                expressions.F("duration"),
+                expressions.Combinable.BITXOR,
+                expressions.Value(1),
+            ),
+            id="bitxor",
+        ),
+        pytest.param(
+            "%%",
+            expressions.CombinedExpression(
+                expressions.F("duration"),
+                expressions.Combinable.MOD,
+                expressions.Value(2),
+                output_field=fields.DurationField(),
+            ),
+            id="mod",
+        ),
+    ],
+)
+def test_duration_with_invalid_connector_raises_database_error(
+    connector: str, expression: expressions.CombinedExpression
+) -> None:
+    queryset = models.Event.objects.values_list(expression, flat=True)
+
+    with pytest.raises(django.db.DatabaseError) as excinfo:
+        list(queryset)
+
+    assert str(excinfo.value) == f"Invalid connector for timedelta: {connector}."

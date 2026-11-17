@@ -4,6 +4,7 @@ import collections.abc
 import functools
 import typing as t
 
+import django.core.exceptions
 import django.db
 from django.db.models import aggregates, expressions, functions, lookups
 from django.db.models.sql import compiler
@@ -41,6 +42,8 @@ HASH_FUNCTIONS = (
 # expression stays inline where CHECK constraints and indexes allow no subquery.
 BITXOR_TEMPLATE = "(({lhs} | {rhs}) - ({lhs} & {rhs}))"
 
+DATE_ARITHMETIC_CONNECTORS = (expressions.Combinable.ADD, expressions.Combinable.SUB)
+
 # Turso's STDDEV is the sample deviation; a single value has a population one of 0.
 STDDEV_POP_TEMPLATE = "(COALESCE({stddev}, 0) * SQRT(({count} - 1.0) / {count}))"
 
@@ -61,7 +64,13 @@ class SQLCompiler(compiler.SQLCompiler):
         ):
             raise exceptions.RegexNotSupportedError(node.rhs)
         if (
+            isinstance(node, expressions.DurationExpression)
+            and node.connector in DATE_ARITHMETIC_CONNECTORS
+        ):
+            return compile_date_arithmetic(self, node)
+        if (
             isinstance(node, expressions.CombinedExpression)
+            and not isinstance(node, expressions.DurationExpression)
             and node.connector == expressions.Combinable.BITXOR
         ):
             return compile_bitxor(self, node)
@@ -134,6 +143,28 @@ def compile_bitxor(
     return operations.fill_template(
         BITXOR_TEMPLATE, lhs=compiler.compile(node.lhs), rhs=compiler.compile(node.rhs)
     )
+
+
+def compile_date_arithmetic(
+    compiler: SQLCompiler, node: expressions.DurationExpression
+) -> SQLParams:
+    compiler.connection.ops.check_expression_support(node)
+    temporal, duration = node.lhs, node.rhs
+    if is_duration(temporal):
+        temporal, duration = duration, temporal
+    sql, params = operations.get_date_arithmetic_sql(
+        node.connector, compiler.compile(temporal), compiler.compile(duration)
+    )
+    return f"({sql})", params
+
+
+def is_duration(expression: t.Any) -> bool:
+    try:
+        output_field = expression.output_field
+    except django.core.exceptions.FieldError:
+        return False
+    internal_type: str = output_field.get_internal_type()
+    return internal_type == "DurationField"
 
 
 def compile_any_value(compiler: SQLCompiler, node: t.Any) -> SQLParams:

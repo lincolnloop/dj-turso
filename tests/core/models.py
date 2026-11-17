@@ -66,3 +66,26 @@ class Counter(models.Model):
 
     def __str__(self) -> str:
         return f"counter {self.pk}"
+
+
+class Shift(models.Model):
+    start = models.DateTimeField()
+    end = models.DateTimeField()
+    duration = models.DurationField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    end__lte=expressions.F("start") + expressions.F("duration")
+                ),
+                name="shift_ends_within_duration",
+            ),
+            models.UniqueConstraint(
+                expressions.F("start") + expressions.F("duration"),
+                name="shift_unique_deadline",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"shift {self.pk}"

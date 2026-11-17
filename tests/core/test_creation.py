@@ -168,6 +168,7 @@ def test_create_replaces_existing_test_database(
         "core_counter",
         "core_event",
         "core_product",
+        "core_shift",
         "core_tag",
     ]
 
@@ -229,6 +230,7 @@ def test_parallel_setup_replaces_existing_clone(
         "core_counter",
         "core_event",
         "core_product",
+        "core_shift",
         "core_tag",
     ]
     assert listing == []
@@ -340,6 +342,7 @@ def test_parallel_worker_opens_memory_test_database_clone(
         "core_counter",
         "core_event",
         "core_product",
+        "core_shift",
         "core_tag",
     ]
     assert listing == []
@@ -460,6 +463,7 @@ def test_url_test_name_is_left_in_place(
         ("core_counter",),
         ("core_event",),
         ("core_product",),
+        ("core_shift",),
         ("core_tag",),
     ]
 

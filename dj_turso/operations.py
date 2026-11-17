@@ -83,27 +83,18 @@ EPOCH_MICROSECONDS_TEMPLATE = (
 
 # Back from epoch microseconds to the form of the temporal operand: datetime, bare
 # time (wrapping at midnight) or date (whole days, as Django's date + timedelta).
-MICROSECONDS = "(((total %% 1000000) + 1000000) %% 1000000)"
-SECONDS = f"((total - {MICROSECONDS}) / 1000000)"
+MICROSECONDS = "((({total} %% 1000000) + 1000000) %% 1000000)"
+SECONDS = f"(({{total}} - {MICROSECONDS}) / 1000000)"
 FRACTION_SUFFIX = (
     f"CASE WHEN {MICROSECONDS} THEN PRINTF('.%%06d', {MICROSECONDS}) ELSE '' END"
 )
 FROM_EPOCH_MICROSECONDS = (
-    f"CASE WHEN INSTR(temporal, ' ') THEN DATETIME({SECONDS}, 'unixepoch') "
+    f"CASE WHEN INSTR({{temporal}}, ' ') THEN DATETIME({SECONDS}, 'unixepoch') "
     f"|| {FRACTION_SUFFIX} "
-    f"WHEN INSTR(temporal, ':') THEN TIME({SECONDS}, 'unixepoch') "
+    f"WHEN INSTR({{temporal}}, ':') THEN TIME({SECONDS}, 'unixepoch') "
     f"|| {FRACTION_SUFFIX} "
     f"ELSE DATE({SECONDS}, 'unixepoch') END"
 )
-
-DATE_ARITHMETIC_TEMPLATE = (
-    "SELECT {result} FROM ("
-    "SELECT {temporal} AS temporal, {epoch} {connector} {duration} AS total "
-    "FROM (SELECT {lhs} AS lhs, {rhs} AS rhs))"
-)
-
-# Marks the DurationField side of a mixed expression for combine_duration_expression.
-DURATION_MARKER = "/* dj_turso duration */ "
 
 
 class DatabaseOperations(sqlite_operations.DatabaseOperations):
@@ -173,32 +164,17 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
 
     # Values are stored in the database time zone, and Turso's date functions know
     # no other: any conversion would need a time zone database.
-    # Only the duration side of a mixed temporal expression comes through here.
-    def format_for_duration_arithmetic(self, sql: str) -> str:
-        return DURATION_MARKER + sql
-
-    # Each operand's SQL may carry parameters bound in order, so each appears once,
-    # in order: for date arithmetic, a derived table names them to reuse them.
+    # Date arithmetic repeats its operands, with their parameters, so the compiler
+    # writes it with get_date_arithmetic_sql(). sqlite3's raises for the rest.
     def combine_duration_expression(
         self, connector: str, sub_expressions: list[str]
     ) -> str:
-        marked_lhs, marked_rhs = sub_expressions
-        lhs = marked_lhs.removeprefix(DURATION_MARKER)
-        rhs = marked_rhs.removeprefix(DURATION_MARKER)
+        lhs, rhs = sub_expressions
         if connector == "*":
             return f"{lhs} * {rhs}"
         if connector == "/":
             return f"CAST({lhs} AS REAL) / {rhs}"
-        temporal, duration = ("rhs", "lhs") if lhs != marked_lhs else ("lhs", "rhs")
-        return DATE_ARITHMETIC_TEMPLATE.format(
-            connector=connector,
-            duration=duration,
-            epoch=EPOCH_MICROSECONDS_TEMPLATE.format(value=temporal),
-            lhs=lhs,
-            result=FROM_EPOCH_MICROSECONDS,
-            rhs=rhs,
-            temporal=temporal,
-        )
+        return super().combine_duration_expression(connector, sub_expressions)
 
     def subtract_temporals(
         self,
@@ -240,6 +216,18 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
             finally:
                 driver_cursor.close()
         return quoted
+
+
+def get_date_arithmetic_sql(
+    connector: str,
+    temporal: tuple[str, t.Sequence[t.Any]],
+    duration: tuple[str, t.Sequence[t.Any]],
+) -> tuple[str, tuple[t.Any, ...]]:
+    epoch = EPOCH_MICROSECONDS_TEMPLATE.format(value="{temporal}")
+    total = fill_template(
+        f"({epoch} {connector} {{duration}})", duration=duration, temporal=temporal
+    )
+    return fill_template(FROM_EPOCH_MICROSECONDS, temporal=temporal, total=total)
 
 
 def get_extract_sql(
