@@ -2,9 +2,9 @@ import datetime as dt
 
 import django.db
 import pytest
+import pytest_django
 from django.db.models import aggregates, expressions, fields, functions
 from django.utils import timezone
-from pytest_django import Settings
 
 from dj_turso import exceptions
 from tests.core import models
@@ -82,7 +82,7 @@ def test_extract_reads_time_part(expected: int, lookup: str) -> None:
 
 @pytest.mark.django_db
 def test_extract_reads_naive_datetime_without_use_tz(
-    settings: Settings,
+    settings: pytest_django.Settings,
 ) -> None:
     settings.USE_TZ = False
     models.Event.objects.create(start="2016-01-01 23:30:50")

@@ -279,7 +279,7 @@ def test_spread_aggregate_of_no_rows_is_null(aggregate: aggregates.Aggregate) ->
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("aggregate", "operator"),
+    ("aggregate", "bitwise_operator"),
     [
         pytest.param(aggregates.BitAnd, operator.and_, id="bit-and"),
         pytest.param(aggregates.BitOr, operator.or_, id="bit-or"),
@@ -288,7 +288,7 @@ def test_spread_aggregate_of_no_rows_is_null(aggregate: aggregates.Aggregate) ->
 )
 def test_bit_aggregate_matches_operator(
     aggregate: type[aggregates.Aggregate],
-    operator: collections.abc.Callable[[int, int], int],
+    bitwise_operator: collections.abc.Callable[[int, int], int],
 ) -> None:
     models.Tag.objects.bulk_create(
         models.Tag(name=prefix * length)
@@ -299,7 +299,9 @@ def test_bit_aggregate_matches_operator(
         bits=aggregate(functions.Length("name") - 10, filter=Q(name__startswith="a"))
     )
 
-    assert result == {"bits": functools.reduce(operator, [3 - 10, 6 - 10, 13 - 10])}
+    assert result == {
+        "bits": functools.reduce(bitwise_operator, [3 - 10, 6 - 10, 13 - 10])
+    }
 
 
 @pytest.mark.django_db
