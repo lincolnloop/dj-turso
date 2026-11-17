@@ -38,8 +38,8 @@ class LostTransactionError(
         )
 
 
-# Overrides the private Session._post and reads _base_url, _baton, _autocommit and
-# _reset_stream: tied to the turso-serverless range pinned in pyproject.toml.
+# Overrides the private Session._post and _reset_stream and reads _base_url, _baton
+# and _autocommit: tied to the turso-serverless range pinned in pyproject.toml.
 class KeepAliveSession(serverless_session.Session):
     def __init__(self, url: str, auth_token: str | None = None) -> None:
         super().__init__(url, auth_token=auth_token)
@@ -48,10 +48,11 @@ class KeepAliveSession(serverless_session.Session):
         self.transaction_lost = False
         self.setup_statements: list[str] = []
         self.starting_stream = False
+        self.stream_was_reset = False
         self.last_response_time = time.monotonic()
 
     # A failed statement that leaves no transaction behind the one it ran in lost
-    # it, however the stream ended.
+    # it, however the stream ended; so did one that succeeded on a stream that ended.
     def execute_stmt(
         self,
         sql: str,
@@ -60,13 +61,22 @@ class KeepAliveSession(serverless_session.Session):
         want_rows: bool = True,
     ) -> serverless_session.StmtResult:
         in_transaction = not self._autocommit
+        self.stream_was_reset = False
         try:
-            return super().execute_stmt(sql, args, named_args, want_rows)
+            result = super().execute_stmt(sql, args, named_args, want_rows)
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
                 self.transaction_lost = True
                 raise LostTransactionError from exc
             raise
+        if in_transaction and self.stream_was_reset:
+            self.transaction_lost = True
+            raise LostTransactionError
+        return result
+
+    def _reset_stream(self) -> None:
+        super()._reset_stream()
+        self.stream_was_reset = True
 
     # Like a broken PostgreSQL connection, nothing runs again until Django closes it.
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:

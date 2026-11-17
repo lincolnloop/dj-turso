@@ -219,6 +219,36 @@ def test_malformed_state_answer_inside_transaction_loses_transaction(
     assert proxied_target.is_usable() is False
 
 
+# When the transaction state is unclear after a statement, the driver asks for it in
+# a pipeline, and on a malformed answer ends the stream yet returns the statement.
+def test_stream_ended_after_successful_statement_loses_transaction(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        proxy.answer_next_requests(
+            b'{"baton": "baton", "base_url": null}\n'
+            b'{"type": "step_begin", "step": 0, "cols": [{"name": "1"}]}\n'
+            b'{"type": "row", "row": [{"type": "integer", "value": "1"}]}\n'
+            b'{"type": "step_end", "affected_row_count": 0, '
+            b'"last_insert_rowid": null}\n'
+            b'{"type": "step_error", "step": 1, "error": {"message": "unclear"}}\n',
+            b"not json",
+        )
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+    ]
+    assert proxied_target.is_usable() is False
+
+
 def test_new_stream_repeats_session_setup(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
