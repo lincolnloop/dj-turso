@@ -27,6 +27,7 @@ jobs:
           - py315-django61
           - dev
           - vendor-sqlite
+          - vendor-pyturso
         # Named for the resolution, not the Python, so a required check survives a
         # Python bump.
         include:

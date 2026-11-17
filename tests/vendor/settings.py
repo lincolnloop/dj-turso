@@ -11,13 +11,14 @@ from django.utils import log
 
 from scripts import vendor_django
 
+# NAME absent in test_sqlite.py; pytest evaluates skipUnlessDBFeature at
+# collection, before the test databases replace it, so it must connect.
 TARGET_DATABASES = {
+    # conftest.py gives each test database its own file per worker.
     "pyturso": {
-        "default": {"ENGINE": "dj_turso"},
-        "other": {"ENGINE": "dj_turso"},
+        "default": {"ENGINE": "dj_turso", "NAME": ":memory:"},
+        "other": {"ENGINE": "dj_turso", "NAME": ":memory:"},
     },
-    # NAME absent in test_sqlite.py; pytest evaluates skipUnlessDBFeature at
-    # collection, before the test databases replace it, so it must connect.
     "sqlite": {
         "default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},
         "other": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"},

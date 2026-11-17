@@ -2,3 +2,388 @@
 # name, kind (pending | unsupported | upstream-bug | stdlib-internal),
 # targets (pyturso, sync-server), reason, issue (upstream-bug), tests (node ids or
 # class/module prefixes).
+
+[[cause]]
+kind = "pending"
+name = "missing datetime UDFs"
+reason = "Django's sqlite3 backend registers its django_* date and time functions as Python UDFs; Turso drivers cannot register functions"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/aggregation/test_filter_argument.py::FilteredAggregateTests::test_filtered_aggregate_ref_subquery_annotation",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregate_join_transform",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregate_transform",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_using_date_from_database",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_using_datetime_from_database",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_using_duration_from_database",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_using_time_from_database",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_dates_with_aggregation",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_group_by_transform_column",
+  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_annotate_with_dates",
+  "tests/vendor/django/annotations/tests.py::AliasTests::test_basic_alias_f_transform_annotation",
+  "tests/vendor/django/annotations/tests.py::AliasTests::test_dates_alias",
+  "tests/vendor/django/annotations/tests.py::AliasTests::test_datetimes_alias",
+  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_annotation_subquery_and_aggregate_values_chaining",
+  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_annotation_subquery_outerref_transform",
+  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_joined_transformed_annotation",
+  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_mixed_type_annotation_date_interval",
+  "tests/vendor/django/backends/tests.py::DateQuotingTest::test_django_date_extract",
+  "tests/vendor/django/backends/tests.py::DateQuotingTest::test_django_date_trunc",
+  "tests/vendor/django/constraints/tests.py::UniqueConstraintTests::test_validate_field_transform",
+  "tests/vendor/django/datetimes/tests.py::DateTimesTests::test_21432",
+  "tests/vendor/django/datetimes/tests.py::DateTimesTests::test_datetimes_has_lazy_iterator",
+  "tests/vendor/django/datetimes/tests.py::DateTimesTests::test_datetimes_returns_available_dates_for_given_scope_and_given_field",
+  "tests/vendor/django/datetimes/tests.py::DateTimesTests::test_related_model_traverse",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_day_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_hour_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_iso_weekday_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_iso_year_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_iso_year_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_minute_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_month_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_outerref",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_quarter_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_quarter_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_second_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_second_func_no_fractional",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_week_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_week_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_weekday_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_lessthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_date_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_date_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_day_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_hour_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_minute_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_month_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_quarter_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_second_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_subquery_with_parameters",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_time_comparison",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_time_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_time_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_week",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_week_before_1000",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_week_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_trunc_year_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_day_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_explicit_timezone_priority",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_with_timezone",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_func_with_timezone_minus_no_offset",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_hour_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_iso_weekday_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_iso_year_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_iso_year_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_minute_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_month_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_outerref",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_quarter_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_quarter_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_second_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_second_func_no_fractional",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_week_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_week_func_boundaries",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_weekday_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_lessthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_date_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_date_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_day_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_func_with_timezone",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_hour_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_minute_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_month_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_quarter_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_second_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_subquery_with_parameters",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_time_comparison",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_time_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_time_none",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_timezone_applied_before_truncation",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_week",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_week_before_1000",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_week_func",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_trunc_year_func",
+  "tests/vendor/django/db_functions/datetime/test_now.py::NowTests::test_basic",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_case_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_comparison",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_minus_duration",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_subquery_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_date_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_and_duration_field_addition_with_annotate_and_no_output_field",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_and_durationfield_addition_with_filter",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subquery_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction_with_annotate_and_no_output_field",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_add",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_subtract",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_duration_with_datetime",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_duration_with_datetime_microseconds",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_durationfield_add",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_durationfield_multiply_divide",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_exclude",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons1",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons2",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_query_clone",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_time_subquery_subtraction",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_time_subtraction",
+  "tests/vendor/django/expressions/tests.py::FieldTransformTests::test_month_aggregation",
+  "tests/vendor/django/expressions/tests.py::FieldTransformTests::test_multiple_transforms_in_values",
+  "tests/vendor/django/expressions/tests.py::FieldTransformTests::test_transform_in_values",
+  "tests/vendor/django/expressions/tests.py::IterableLookupInnerExpressionsTests::test_range_lookup_allows_F_expressions_and_expressions_for_dates",
+  "tests/vendor/django/expressions_window/tests.py::WindowFunctionTests::test_dense_rank",
+  "tests/vendor/django/expressions_window/tests.py::WindowFunctionTests::test_max_per_year",
+  "tests/vendor/django/expressions_window/tests.py::WindowFunctionTests::test_multiple_partitioning",
+  "tests/vendor/django/expressions_window/tests.py::WindowFunctionTests::test_rank",
+  "tests/vendor/django/lookup/test_timefield.py::TimeFieldLookupTests::test_hour_lookups",
+  "tests/vendor/django/lookup/test_timefield.py::TimeFieldLookupTests::test_minute_lookups",
+  "tests/vendor/django/lookup/test_timefield.py::TimeFieldLookupTests::test_second_lookups",
+  "tests/vendor/django/lookup/tests.py::LookupTests::test_chain_date_time_lookups",
+  "tests/vendor/django/model_fields/test_datetimefield.py::DateTimeFieldTests::test_lookup_date_with_use_tz",
+  "tests/vendor/django/model_fields/test_datetimefield.py::DateTimeFieldTests::test_lookup_date_without_use_tz",
+  "tests/vendor/django/multiple_database/tests.py::QueryTestCase::test_basic_queries",
+  "tests/vendor/django/queries/tests.py::Queries1Tests::test_order_by_related_field_transform",
+  "tests/vendor/django/queries/tests.py::Queries1Tests::test_ticket7155",
+  "tests/vendor/django/queries/tests.py::Queries1Tests::test_ticket7791",
+  "tests/vendor/django/queries/tests.py::Queries1Tests::test_tickets_6180_6203",
+  "tests/vendor/django/queries/tests.py::Queries1Tests::test_tickets_7087_12242",
+  "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_query_datetime_lookups",
+  "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_query_datetimes",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_convert_timezones",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetime_lookups",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetime_lookups_in_other_timezone",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetimes",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_query_datetimes_in_other_timezone",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_update_with_timedelta",
+]
+
+[[cause]]
+kind = "pending"
+name = "missing aggregate UDFs"
+reason = "STDDEV_POP, VAR_POP, BIT_AND, BIT_OR, BIT_XOR and ANY_VALUE are Python aggregates in Django's sqlite3 backend; Turso drivers cannot register them"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/aggregation/test_filter_argument.py::FilteredAggregateTests::test_filtered_numerical_aggregates",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_expression",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_integer",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_unset",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_zero",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value_aggregate_clause",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value_filter",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and_on_only_false_values",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and_on_only_true_values",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or_on_only_false_values",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or_on_only_true_values",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor_on_only_false_values",
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor_on_only_true_values",
+  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_stddev",
+]
+
+[[cause]]
+kind = "pending"
+name = "missing scalar UDFs"
+reason = "COT, RAND, BITXOR, MD5, SHA* and UUIDV4/UUIDV7 are Python functions in Django's sqlite3 backend; Turso drivers cannot register them"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_random_ordering",
+  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_count_preserve_group_by",
+  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_decimal",
+  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_float",
+  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_integer",
+  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_null",
+  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_transform",
+  "tests/vendor/django/db_functions/math/test_random.py::RandomTests::test",
+  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid4",
+  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid4_lookup",
+  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid7",
+  "tests/vendor/django/db_functions/text/test_md5.py::MD5Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_md5.py::MD5Tests::test_transform",
+  "tests/vendor/django/db_functions/text/test_sha1.py::SHA1Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_sha1.py::SHA1Tests::test_transform",
+  "tests/vendor/django/db_functions/text/test_sha224.py::SHA224Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_sha224.py::SHA224Tests::test_transform",
+  "tests/vendor/django/db_functions/text/test_sha256.py::SHA256Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_sha256.py::SHA256Tests::test_transform",
+  "tests/vendor/django/db_functions/text/test_sha384.py::SHA384Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_sha384.py::SHA384Tests::test_transform",
+  "tests/vendor/django/db_functions/text/test_sha512.py::SHA512Tests::test_basic",
+  "tests/vendor/django/db_functions/text/test_sha512.py::SHA512Tests::test_transform",
+  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor",
+  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor_null",
+  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor_right_null",
+]
+
+[[cause]]
+kind = "stdlib-internal"
+name = "stdlib sqlite3 limit API"
+reason = "Reads or lowers limits through the stdlib sqlite3 Connection.getlimit()/setlimit(), which Turso drivers do not have; dj-turso uses SQLite's default limits as constants"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/backends/sqlite/test_features.py::FeaturesTests::test_max_query_params_respects_variable_limit",
+  "tests/vendor/django/backends/sqlite/test_operations.py::SQLiteOperationsTests::test_bulk_batch_size_respects_variable_limit",
+  "tests/vendor/django/backends/sqlite/tests.py::LastExecutedQueryTest::test_parameter_count_exceeds_variable_or_column_limit",
+]
+
+[[cause]]
+kind = "stdlib-internal"
+name = "stdlib backend display name"
+reason = "Asserts the stdlib backend's display name 'SQLite' in the version error; dj-turso's display name is 'Turso'"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/backends/sqlite/tests.py::Tests::test_check_database_version_supported",
+]
+
+[[cause]]
+kind = "stdlib-internal"
+name = "in-memory test database never closes"
+reason = "Relies on the in-memory SQLite test database Django's sqlite3 backend uses by default; Turso test databases are files, and closing the shared connection mid-test breaks every later test in the process"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/backends/sqlite/test_creation.py::TestDbSignatureTests::test_get_test_db_clone_settings_not_supported",
+  "tests/vendor/django/backends/sqlite/tests.py::ThreadSharing::test_database_sharing_in_threads",
+]
+
+[[cause]]
+kind = "pending"
+name = "skipped by Django on SQLite"
+reason = "Django's sqlite3 features skip these (negative ROUND precision, 15-digit decimal storage, naive table remakes, undeterminable executed query); dj-turso replaces django_test_skips with this index and has not settled their kind"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/backends/base/test_base.py::ExecuteWrapperTests::test_wrapper_debug",
+  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_decimal_with_negative_precision",
+  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_float_with_negative_precision",
+  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_integer_with_negative_precision",
+  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_null_with_negative_precision",
+  "tests/vendor/django/model_fields/test_decimalfield.py::DecimalFieldTests::test_fetch_from_db_without_float_rounding",
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_alter_field_default_doesnt_perform_queries",
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_rename_column_renames_deferred_sql_references",
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_unique_and_reverse_m2m",
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_unique_no_unnecessary_fk_drops",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "subquery in HAVING returns wrong rows"
+reason = "Turso returns the wrong rows, silently, for a subquery inside HAVING"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_having_subquery_select",
+  "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_annotation_filter_with_subquery",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "regexp backreference"
+reason = "Turso's regexp() does not support backreferences"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/lookup/tests.py::LookupTests::test_regex_backreferencing",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "compound SELECT in WHERE subquery"
+reason = "Turso rejects UNION/INTERSECT/EXCEPT inside a WHERE subquery"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/queries/test_qs_combinators.py::QuerySetSetOperationTests::test_intersection_in_nested_subquery",
+  "tests/vendor/django/queries/test_qs_combinators.py::QuerySetSetOperationTests::test_union_in_subquery",
+  "tests/vendor/django/queries/test_qs_combinators.py::QuerySetSetOperationTests::test_union_in_subquery_related_outerref",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "mixed-case quoted table in qualified UPDATE"
+reason = "Turso fails to resolve a mixed-case quoted table name referenced as a qualified column in UPDATE"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction_microseconds",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_update",
+  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_negative_timedelta_update",
+  "tests/vendor/django/queries/test_bulk_update.py::BulkUpdateTests::test_booleanfield",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "PRAGMA foreign_keys=OFF honored inside a transaction"
+reason = "SQLite ignores PRAGMA foreign_keys inside a transaction; Turso applies it, so Django sees constraint checks disabled where it expects them still on"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_constraint_checks_disabled_atomic_allowed",
+  "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_disable_constraint_checking_failure_disallowed",
+  "tests/vendor/django/fixtures/tests.py::FixtureLoadingTests::test_loaddata_error_message",
+]
+
+[[cause]]
+issue = "TBD"
+kind = "upstream-bug"
+name = "case-only RENAME COLUMN"
+reason = "Turso rejects renaming a column to a name differing only in case as a duplicate column"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/migrations/test_operations.py::OperationTests::test_rename_field_case",
+]
+
+[[cause]]
+kind = "pending"
+name = "foreign_key_check is a no-op"
+reason = "Turso accepts PRAGMA foreign_key_check but returns no rows, so Django's constraint check never reports a dangling foreign key"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/fixtures_regress/tests.py::TestFixtures::test_loaddata_raises_error_when_fixture_has_invalid_foreign_key",
+  "tests/vendor/django/test_utils/test_testcase.py::TestTestCase::test_fixture_teardown_checks_constraints",
+]
+
+[[cause]]
+kind = "pending"
+name = "introspection loses varchar length, collation and index-name case"
+reason = "Turso's table_xinfo and index pragmas drop varchar lengths and column collations and lowercase index names"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_char_field_db_collation",
+  "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_field_types",
+  "tests/vendor/django/introspection/tests.py::IntrospectionTests::test_get_table_description_col_lengths",
+  "tests/vendor/django/migrations/test_operations.py::OperationTests::test_alter_field_reloads_state_on_transitive_attname_to_field_type_change",
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_remove_constraints_capital_letters",
+]
+
+[[cause]]
+kind = "pending"
+name = "no converters on raw cursor results"
+reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; Turso drivers return the stored text"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_add_datefield_and_datetimefield_use_effective_default",
+  "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_cursor_execute_returns_naive_datetime",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_cursor_execute_returns_naive_datetime",
+]
+
+[[cause]]
+kind = "pending"
+name = "second process cannot open the test database"
+reason = "A subprocess the test starts opens the test database file, which Turso locks to one process"
+targets = ["pyturso"]
+tests = [
+  "tests/vendor/django/migrations/test_loader.py::LoaderTests::test_loading_order_does_not_create_circular_dependency",
+]

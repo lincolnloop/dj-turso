@@ -3,6 +3,7 @@
 import collections.abc
 import functools
 import gc
+import os
 import pathlib
 import tempfile
 
@@ -44,6 +45,19 @@ def pytest_collection(session: pytest.Session) -> collections.abc.Generator[None
     # collection-time probe would shadow the test database created later.
     for connection in django.db.connections.all(initialized_only=True):
         base.BaseDatabaseWrapper.close(connection)
+
+
+# Turso test databases are files, and two processes cannot open one: each xdist
+# worker gets its own directory. In place: collection already configured them.
+@pytest.fixture(scope="session")
+def django_db_modify_db_settings(tmp_path_factory: pytest.TempPathFactory) -> None:
+    if os.environ.get("DJ_TURSO_TARGET", "pyturso") == "sqlite":
+        return
+    directory = tmp_path_factory.mktemp("databases")
+    for connection in django.db.connections.all():
+        connection.settings_dict["TEST"]["NAME"] = str(
+            directory / f"test_{connection.alias}.db"
+        )
 
 
 # runtests.py creates the test databases before any test runs; plain unittest
