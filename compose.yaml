@@ -9,7 +9,7 @@ services:
       # the tests see a wrong one refused. The matching token is in tests/utils.py.
       - SQLD_AUTH_JWT_KEY=5gtfrdR2LNE1CnjuZWbFYykndXKfK4UYYIRIPqlxSLA
     ports:
-      - "${DJ_TURSO_SQLD_PORT:-8880}:8080"
+      - "127.0.0.1:${DJ_TURSO_SQLD_PORT:-8880}:8080"
     healthcheck:
       # The image ships no curl or wget.
       test:
