@@ -1,5 +1,6 @@
 """A turso_serverless session that keeps one HTTP connection open across requests."""
 
+import base64
 import contextlib
 import http
 import http.client
@@ -8,6 +9,7 @@ import selectors
 import time
 import typing as t
 import urllib.parse
+import urllib.request
 
 import turso_serverless
 from turso_serverless import protocol
@@ -45,6 +47,8 @@ class KeepAliveSession(serverless_session.Session):
         super().__init__(url, auth_token=auth_token)
         self.http_connection: http.client.HTTPConnection | None = None
         self.http_connection_origin: tuple[str, str] | None = None
+        # Set while the connection is to a proxy that forwards each request whole.
+        self.forward_proxy_headers: dict[str, str] | None = None
         self.transaction_lost = False
         self.setup_statements: list[str] = []
         self.starting_stream = False
@@ -149,11 +153,15 @@ class KeepAliveSession(serverless_session.Session):
         parts = urllib.parse.urlsplit(url)
         try:
             connection = self.get_http_connection(parts.scheme, parts.netloc)
+            if self.forward_proxy_headers is None:
+                target, headers = parts.path, self._headers()
+            else:
+                target, headers = url, self._headers() | self.forward_proxy_headers
             connection.request(
                 "POST",
-                parts.path,
+                target,
                 body=json.dumps(body, allow_nan=False).encode(),
-                headers=self._headers(),
+                headers=headers,
             )
             response = connection.getresponse()
             raw = response.read()
@@ -186,7 +194,18 @@ class KeepAliveSession(serverless_session.Session):
                 if scheme == "https"
                 else http.client.HTTPConnection
             )
-            self.http_connection = connection_class(netloc, timeout=CONNECT_TIMEOUT)
+            proxy = get_proxy(scheme, netloc)
+            if proxy is not None:
+                proxy_netloc, proxy_headers = proxy
+                self.http_connection = connection_class(
+                    proxy_netloc, timeout=CONNECT_TIMEOUT
+                )
+                if scheme == "https":
+                    self.http_connection.set_tunnel(netloc, headers=proxy_headers)
+                else:
+                    self.forward_proxy_headers = proxy_headers
+            else:
+                self.http_connection = connection_class(netloc, timeout=CONNECT_TIMEOUT)
             self.http_connection_origin = (scheme, netloc)
         # Connected here, not by http.client on request, so that every new socket,
         # even after the server closes one, waits on reads with no time limit.
@@ -199,6 +218,7 @@ class KeepAliveSession(serverless_session.Session):
             self.http_connection.close()
             self.http_connection = None
             self.http_connection_origin = None
+            self.forward_proxy_headers = None
 
 
 class KeepAliveConnection(turso_serverless.Connection):
@@ -229,6 +249,25 @@ def set_up_session(connection: KeepAliveConnection, statements: list[str]) -> No
 
 def is_usable(connection: KeepAliveConnection) -> bool:
     return not connection.session.transaction_lost
+
+
+# The proxy upstream's urllib.request.urlopen would take to the origin: its host and
+# port, with the headers it needs, or None to connect directly.
+def get_proxy(scheme: str, netloc: str) -> tuple[str, dict[str, str]] | None:
+    proxy = urllib.request.getproxies().get(scheme)
+    if not proxy or urllib.request.proxy_bypass(netloc):
+        return None
+    parts = urllib.parse.urlsplit(proxy if "://" in proxy else f"//{proxy}")
+    headers = {}
+    if parts.username and parts.password:
+        credentials = (
+            f"{urllib.parse.unquote(parts.username)}:"
+            f"{urllib.parse.unquote(parts.password)}"
+        )
+        headers["Proxy-Authorization"] = (
+            f"Basic {base64.b64encode(credentials.encode()).decode('ascii')}"
+        )
+    return urllib.parse.unquote(parts.netloc.rpartition("@")[2]), headers
 
 
 def connect_with_untimed_reads(connection: http.client.HTTPConnection) -> None:

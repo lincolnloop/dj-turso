@@ -6,6 +6,7 @@ import resource
 import socket
 import time
 import typing as t
+import urllib.parse
 
 import django.db
 import django.db.utils
@@ -506,3 +507,144 @@ def test_unanswered_connect_fails_after_connect_timeout(
     while timeout_error.__cause__ is not None:
         timeout_error = timeout_error.__cause__
     assert str(excinfo.value) == f"request to /v3/pipeline failed: {timeout_error}"
+
+
+# As upstream's urllib.request.urlopen, through the proxy the environment names, by
+# URL or by host and port alone.
+@pytest.mark.parametrize(
+    "proxy_template",
+    [
+        pytest.param("http://127.0.0.1:{port}", id="url"),
+        pytest.param("127.0.0.1:{port}", id="authority"),
+    ],
+)
+def test_http_proxy_from_environment_carries_queries(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    monkeypatch: pytest.MonkeyPatch,
+    proxy: utils.CountingProxy,
+    proxy_template: str,
+    sqld_url: str,
+) -> None:
+    for name in ("HTTP_PROXY", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("http_proxy", proxy_template.format(port=proxy.port))
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": sqld_url,
+                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+            }
+        }
+    )
+    connection = t.cast("base.DatabaseWrapper", handler["default"])
+
+    with django_db_blocker.unblock():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            rows = cursor.fetchall()
+        connection.close()
+
+    assert rows == [(1,)]
+    # Setup, the query, then the close.
+    assert proxy.received_request_count == 3
+
+
+# Port 1 refuses connections: only a bypassed proxy lets the query through.
+def test_no_proxy_from_environment_bypasses_proxy(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    monkeypatch: pytest.MonkeyPatch,
+    sqld_url: str,
+) -> None:
+    for name in ("HTTP_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": sqld_url,
+                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+            }
+        }
+    )
+    connection = t.cast("base.DatabaseWrapper", handler["default"])
+
+    with django_db_blocker.unblock():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            rows = cursor.fetchall()
+        connection.close()
+
+    assert rows == [(1,)]
+
+
+def test_http_proxy_credentials_from_environment_authorize_queries(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    monkeypatch: pytest.MonkeyPatch,
+    proxy: utils.CountingProxy,
+    sqld_url: str,
+) -> None:
+    for name in ("HTTP_PROXY", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("http_proxy", f"http://us%40er:p%3Ass@127.0.0.1:{proxy.port}")
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": sqld_url,
+                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+            }
+        }
+    )
+    connection = t.cast("base.DatabaseWrapper", handler["default"])
+
+    with django_db_blocker.unblock():
+        connection.ensure_connection()
+        connection.close()
+
+    assert [
+        utils.get_request_headers(request).get("Proxy-Authorization")
+        for request in proxy.received_requests
+    ] == ["Basic dXNAZXI6cDpzcw==", "Basic dXNAZXI6cDpzcw=="]
+
+
+def test_https_proxy_from_environment_tunnels_queries(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    monkeypatch: pytest.MonkeyPatch,
+    tunnel_proxy: utils.TunnelProxy,
+) -> None:
+    url = os.environ.get("TURSO_DATABASE_URL", "")
+    auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
+    if not (url and auth_token):
+        pytest.skip("needs TURSO_DATABASE_URL and TURSO_AUTH_TOKEN")
+    for name in ("HTTPS_PROXY", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "https_proxy", f"http://us%40er:p%3Ass@127.0.0.1:{tunnel_proxy.port}"
+    )
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": url,
+                "OPTIONS": {"auth_token": auth_token},
+            }
+        }
+    )
+    connection = t.cast("base.DatabaseWrapper", handler["default"])
+
+    with django_db_blocker.unblock():
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            rows = cursor.fetchall()
+        connection.close()
+
+    host = urllib.parse.urlsplit(url).hostname
+    assert rows == [(1,)]
+    assert tunnel_proxy.received_requests == [
+        f"CONNECT {host}:443 HTTP/1.1\r\n"
+        f"Proxy-Authorization: Basic dXNAZXI6cDpzcw==\r\n"
+        f"Host: {host}:443\r\n\r\n".encode()
+    ]

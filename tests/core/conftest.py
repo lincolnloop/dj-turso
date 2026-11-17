@@ -114,3 +114,10 @@ def proxied_target(
     with django_db_blocker.unblock():
         yield connection
         connection.close()
+
+
+@pytest.fixture
+def tunnel_proxy() -> collections.abc.Iterator[utils.TunnelProxy]:
+    proxy = utils.TunnelProxy()
+    yield proxy
+    proxy.close()

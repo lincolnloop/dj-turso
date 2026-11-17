@@ -38,6 +38,7 @@ class CountingProxy:
         self.condition = threading.Condition()
         self.accepted_connection_count = 0
         self.received_request_count = 0
+        self.received_requests: list[bytes] = []
         self.open_sockets: dict[socket.socket, socket.socket] = {}
         self.drop_next_request = False
         self.answers: list[tuple[http.HTTPStatus, bytes]] = []
@@ -104,6 +105,7 @@ class CountingProxy:
                     break
                 with self.condition:
                     self.received_request_count += 1
+                    self.received_requests.append(request)
                     dropping, self.drop_next_request = self.drop_next_request, False
                     answer = self.answers.pop(0) if self.answers else None
                 if dropping:
@@ -140,6 +142,57 @@ class CountingProxy:
             sock.close()
 
 
+class TunnelProxy:
+    """An HTTP proxy that only tunnels: it answers CONNECT, then relays raw bytes."""
+
+    def __init__(self) -> None:
+        self.listener = socket.create_server(("127.0.0.1", 0))
+        self.port: int = self.listener.getsockname()[1]
+        self.lock = threading.Lock()
+        self.received_requests: list[bytes] = []
+        self.open_sockets: list[socket.socket] = []
+        threading.Thread(target=self.accept_connections, daemon=True).start()
+
+    def close(self) -> None:
+        self.listener.close()
+        with self.lock:
+            sockets = list(self.open_sockets)
+        for sock in sockets:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+
+    def accept_connections(self) -> None:
+        while True:
+            try:
+                client, _ = self.listener.accept()
+            except OSError:
+                return
+            threading.Thread(target=self.tunnel, args=(client,), daemon=True).start()
+
+    def tunnel(self, client: socket.socket) -> None:
+        request, rest = read_http_request(client, b"")
+        if request is None:
+            client.close()
+            return
+        host, _, port = request.split(b" ", 2)[1].decode().rpartition(":")
+        upstream = socket.create_connection((host, int(port)))
+        with self.lock:
+            self.received_requests.append(request)
+            self.open_sockets.extend((client, upstream))
+        client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+        upstream.sendall(rest)
+        threading.Thread(target=relay, args=(upstream, client), daemon=True).start()
+        relay(client, upstream)
+
+
+def relay(source: socket.socket, destination: socket.socket) -> None:
+    with contextlib.suppress(OSError):
+        for data in iter(lambda: source.recv(65536), b""):
+            destination.sendall(data)
+        destination.shutdown(socket.SHUT_WR)
+
+
 # One request off the socket: the bytes, and what was read past it. None at EOF.
 def read_http_request(sock: socket.socket, buffer: bytes) -> tuple[bytes | None, bytes]:
     while True:
@@ -152,5 +205,10 @@ def read_http_request(sock: socket.socket, buffer: bytes) -> tuple[bytes | None,
 
 
 def get_content_length(head: bytes) -> int:
-    fields = dict(line.partition(b": ")[::2] for line in head.split(b"\r\n")[1:])
-    return int(fields[b"Content-Length"])
+    return int(get_request_headers(head).get("Content-Length", "0"))
+
+
+# The header fields of a request, from its head or the whole request.
+def get_request_headers(request: bytes) -> dict[str, str]:
+    head = request.partition(b"\r\n\r\n")[0].decode("latin-1")
+    return dict(line.partition(": ")[::2] for line in head.split("\r\n")[1:])
