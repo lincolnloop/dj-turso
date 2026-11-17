@@ -1,4 +1,4 @@
-"""The index of known gaps: which tests fail on which Turso target, and why."""
+"""The index of known gaps: which tests fail on Turso, and why."""
 
 import dataclasses
 import pathlib
@@ -6,8 +6,6 @@ import tomllib
 import typing as t
 
 KINDS = ("pending", "unsupported", "upstream-bug", "stdlib-internal")
-
-TARGETS = ("pyturso", "sync-server")
 
 
 class InvalidIndexError(Exception):
@@ -34,11 +32,6 @@ class UnknownKindError(InvalidIndexError):
         super().__init__(f"cause {cause!r}: unknown kind {kind!r}")
 
 
-class UnknownTargetError(InvalidIndexError):
-    def __init__(self, cause: str, target: str) -> None:
-        super().__init__(f"cause {cause!r}: unknown target {target!r}")
-
-
 class MissingIssueError(InvalidIndexError):
     def __init__(self, cause: str) -> None:
         super().__init__(f"cause {cause!r}: upstream-bug needs an issue")
@@ -50,8 +43,8 @@ class MissingReasonError(InvalidIndexError):
 
 
 class DuplicateTestError(InvalidIndexError):
-    def __init__(self, test: str, target: str) -> None:
-        super().__init__(f"{test} listed more than once for target {target}")
+    def __init__(self, test: str) -> None:
+        super().__init__(f"{test} listed more than once")
 
 
 class StaleEntriesError(InvalidIndexError):
@@ -63,7 +56,6 @@ class StaleEntriesError(InvalidIndexError):
 class Cause:
     name: str
     kind: str
-    targets: tuple[str, ...]
     tests: tuple[str, ...]
     reason: str = ""
     issue: str = ""
@@ -71,9 +63,6 @@ class Cause:
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             raise UnknownKindError(self.name, self.kind)
-        for target in self.targets:
-            if target not in TARGETS:
-                raise UnknownTargetError(self.name, target)
         if self.kind == "upstream-bug" and not self.issue:
             raise MissingIssueError(self.name)
         if self.kind == "stdlib-internal" and not self.reason:
@@ -105,19 +94,16 @@ def read_cause(number: int, entry: dict[str, t.Any]) -> Cause:
     ]
     if missing:
         raise MissingFieldsError(number, missing)
-    return Cause(
-        **entry | {"targets": tuple(entry["targets"]), "tests": tuple(entry["tests"])}
-    )
+    return Cause(**entry | {"tests": tuple(entry["tests"])})
 
 
 def check_duplicate_tests(causes: list[Cause]) -> None:
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for cause in causes:
-        for target in cause.targets:
-            for test in cause.tests:
-                if (test, target) in seen:
-                    raise DuplicateTestError(test, target)
-                seen.add((test, target))
+        for test in cause.tests:
+            if test in seen:
+                raise DuplicateTestError(test)
+            seen.add(test)
 
 
 # The module, each enclosing class, then the test itself.

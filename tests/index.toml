@@ -1,13 +1,11 @@
-# Known gaps per Turso target, applied by tests/conftest.py. One [[cause]] per reason:
-# name, kind (pending | unsupported | upstream-bug | stdlib-internal),
-# targets (pyturso, sync-server), reason, issue (upstream-bug), tests (node ids or
-# class/module prefixes).
+# Known gaps on pyturso, applied by tests/conftest.py. One [[cause]] per reason:
+# name, kind (pending | unsupported | upstream-bug | stdlib-internal), reason,
+# issue (upstream-bug), tests (node ids or class/module prefixes).
 
 [[cause]]
 kind = "pending"
 name = "missing datetime UDFs"
 reason = "Django's sqlite3 backend registers its django_* date and time functions as Python UDFs; Turso drivers cannot register functions"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/aggregation/test_filter_argument.py::FilteredAggregateTests::test_filtered_aggregate_ref_subquery_annotation",
   "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregate_join_transform",
@@ -173,7 +171,6 @@ tests = [
 kind = "pending"
 name = "missing aggregate UDFs"
 reason = "STDDEV_POP, VAR_POP, BIT_AND, BIT_OR, BIT_XOR and ANY_VALUE are Python aggregates in Django's sqlite3 backend; Turso drivers cannot register them"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/aggregation/test_filter_argument.py::FilteredAggregateTests::test_filtered_numerical_aggregates",
   "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_expression",
@@ -199,7 +196,6 @@ tests = [
 kind = "pending"
 name = "missing scalar UDFs"
 reason = "COT, RAND, BITXOR, MD5, SHA* and UUIDV4/UUIDV7 are Python functions in Django's sqlite3 backend; Turso drivers cannot register them"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_random_ordering",
   "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_count_preserve_group_by",
@@ -233,7 +229,6 @@ tests = [
 kind = "stdlib-internal"
 name = "stdlib sqlite3 limit API"
 reason = "Reads or lowers limits through the stdlib sqlite3 Connection.getlimit()/setlimit(), which Turso drivers do not have; dj-turso uses SQLite's default limits as constants"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/backends/sqlite/test_features.py::FeaturesTests::test_max_query_params_respects_variable_limit",
   "tests/vendor/django/backends/sqlite/test_operations.py::SQLiteOperationsTests::test_bulk_batch_size_respects_variable_limit",
@@ -244,7 +239,6 @@ tests = [
 kind = "stdlib-internal"
 name = "stdlib backend display name"
 reason = "Asserts the stdlib backend's display name 'SQLite' in the version error; dj-turso's display name is 'Turso'"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/backends/sqlite/tests.py::Tests::test_check_database_version_supported",
 ]
@@ -253,7 +247,6 @@ tests = [
 kind = "stdlib-internal"
 name = "in-memory test database never closes"
 reason = "Relies on the in-memory SQLite test database Django's sqlite3 backend uses by default; Turso test databases are files, and closing the shared connection mid-test breaks every later test in the process"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/backends/sqlite/test_creation.py::TestDbSignatureTests::test_get_test_db_clone_settings_not_supported",
   "tests/vendor/django/backends/sqlite/tests.py::ThreadSharing::test_database_sharing_in_threads",
@@ -263,7 +256,6 @@ tests = [
 kind = "pending"
 name = "skipped by Django on SQLite"
 reason = "Django's sqlite3 features skip these (negative ROUND precision, 15-digit decimal storage, naive table remakes, undeterminable executed query); dj-turso replaces django_test_skips with this index and has not settled their kind"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/backends/base/test_base.py::ExecuteWrapperTests::test_wrapper_debug",
   "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_decimal_with_negative_precision",
@@ -282,7 +274,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "subquery in HAVING returns wrong rows"
 reason = "Turso returns the wrong rows, silently, for a subquery inside HAVING"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_having_subquery_select",
   "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase::test_annotation_filter_with_subquery",
@@ -293,7 +284,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "regexp backreference"
 reason = "Turso's regexp() does not support backreferences"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/lookup/tests.py::LookupTests::test_regex_backreferencing",
 ]
@@ -303,7 +293,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "compound SELECT in WHERE subquery"
 reason = "Turso rejects UNION/INTERSECT/EXCEPT inside a WHERE subquery"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/queries/test_qs_combinators.py::QuerySetSetOperationTests::test_intersection_in_nested_subquery",
   "tests/vendor/django/queries/test_qs_combinators.py::QuerySetSetOperationTests::test_union_in_subquery",
@@ -315,7 +304,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "mixed-case quoted table in qualified UPDATE"
 reason = "Turso fails to resolve a mixed-case quoted table name referenced as a qualified column in UPDATE"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction_microseconds",
   "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_update",
@@ -328,7 +316,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "PRAGMA foreign_keys=OFF honored inside a transaction"
 reason = "SQLite ignores PRAGMA foreign_keys inside a transaction; Turso applies it, so Django sees constraint checks disabled where it expects them still on"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_constraint_checks_disabled_atomic_allowed",
   "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_disable_constraint_checking_failure_disallowed",
@@ -340,7 +327,6 @@ issue = "TBD"
 kind = "upstream-bug"
 name = "case-only RENAME COLUMN"
 reason = "Turso rejects renaming a column to a name differing only in case as a duplicate column"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/migrations/test_operations.py::OperationTests::test_rename_field_case",
 ]
@@ -349,7 +335,6 @@ tests = [
 kind = "pending"
 name = "foreign_key_check is a no-op"
 reason = "Turso accepts PRAGMA foreign_key_check but returns no rows, so Django's constraint check never reports a dangling foreign key"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/fixtures_regress/tests.py::TestFixtures::test_loaddata_raises_error_when_fixture_has_invalid_foreign_key",
   "tests/vendor/django/test_utils/test_testcase.py::TestTestCase::test_fixture_teardown_checks_constraints",
@@ -359,7 +344,6 @@ tests = [
 kind = "pending"
 name = "introspection loses varchar length, collation and index-name case"
 reason = "Turso's table_xinfo and index pragmas drop varchar lengths and column collations and lowercase index names"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_char_field_db_collation",
   "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_field_types",
@@ -372,7 +356,6 @@ tests = [
 kind = "pending"
 name = "no converters on raw cursor results"
 reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; Turso drivers return the stored text"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/schema/tests.py::SchemaTests::test_add_datefield_and_datetimefield_use_effective_default",
   "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_cursor_execute_returns_naive_datetime",
@@ -383,7 +366,6 @@ tests = [
 kind = "pending"
 name = "second process cannot open the test database"
 reason = "A subprocess the test starts opens the test database file, which Turso locks to one process"
-targets = ["pyturso"]
 tests = [
   "tests/vendor/django/migrations/test_loader.py::LoaderTests::test_loading_order_does_not_create_circular_dependency",
 ]

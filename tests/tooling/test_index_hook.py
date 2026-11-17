@@ -21,7 +21,6 @@ def test_unsupported_entry_passes_only_on_not_supported_error(
         [[cause]]
         name = "no tz"
         kind = "unsupported"
-        targets = ["pyturso"]
         reason = "UTC only"
         tests = [
             "test_sample.py::test_raises_not_supported",
@@ -50,7 +49,6 @@ def test_pending_entry_marks_failing_test_expected_failure(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::test_fails"]
         """,
     )
@@ -77,7 +75,6 @@ def test_pending_entry_fails_run_when_test_passes(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::test_passes"]
         """,
     )
@@ -102,7 +99,6 @@ def test_upstream_bug_entry_reports_issue_with_expected_failure(
         [[cause]]
         name = "HAVING subquery wrong rows"
         kind = "upstream-bug"
-        targets = ["pyturso"]
         issue = "TBD"
         tests = ["test_sample.py::test_fails"]
         """,
@@ -130,7 +126,6 @@ def test_upstream_bug_entry_fails_run_when_test_passes(
         [[cause]]
         name = "HAVING subquery wrong rows"
         kind = "upstream-bug"
-        targets = ["pyturso"]
         issue = "TBD"
         tests = ["test_sample.py::test_passes"]
         """,
@@ -156,7 +151,6 @@ def test_stdlib_internal_entry_skips_with_reason(
         [[cause]]
         name = "sqlite3 limits"
         kind = "stdlib-internal"
-        targets = ["pyturso"]
         reason = "asserts on sqlite3.Connection.getlimit"
         tests = ["test_sample.py::test_uses_getlimit"]
         """,
@@ -173,32 +167,7 @@ def test_stdlib_internal_entry_skips_with_reason(
     )
 
 
-def test_entry_for_other_target_leaves_test_unmarked(
-    index_pytester: pytest.Pytester,
-) -> None:
-    index_pytester.makepyfile(
-        test_sample="""
-        def test_fails():
-            raise AssertionError
-        """
-    )
-    index_pytester.makefile(
-        ".toml",
-        index="""
-        [[cause]]
-        name = "remote exception class"
-        kind = "pending"
-        targets = ["sync-server"]
-        tests = ["test_sample.py::test_fails"]
-        """,
-    )
-
-    result = index_pytester.runpytest("-p", "no:django")
-
-    result.assert_outcomes(failed=1)
-
-
-def test_sqlite_target_leaves_indexed_test_unmarked(
+def test_sqlite_control_run_leaves_indexed_test_unmarked(
     index_pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DJ_TURSO_TARGET", "sqlite")
@@ -214,7 +183,6 @@ def test_sqlite_target_leaves_indexed_test_unmarked(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso", "sync-server"]
         tests = ["test_sample.py::test_fails"]
         """,
     )
@@ -245,7 +213,6 @@ def test_class_entry_marks_every_method(index_pytester: pytest.Pytester) -> None
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::TestDates"]
         """,
     )
@@ -278,7 +245,6 @@ def test_module_entry_marks_every_test_in_module(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py"]
         """,
     )
@@ -296,7 +262,6 @@ def test_module_entry_marks_every_test_in_module(
             [[cause]]
             name = "dates"
             kind = "pendng"
-            targets = ["pyturso"]
             tests = ["test_sample.py::test_fails"]
             """,
             "cause 'dates': unknown kind 'pendng'",
@@ -305,20 +270,8 @@ def test_module_entry_marks_every_test_in_module(
         pytest.param(
             """
             [[cause]]
-            name = "dates"
-            kind = "pending"
-            targets = ["pyturso", "local"]
-            tests = ["test_sample.py::test_fails"]
-            """,
-            "cause 'dates': unknown target 'local'",
-            id="unknown-target",
-        ),
-        pytest.param(
-            """
-            [[cause]]
             name = "having"
             kind = "upstream-bug"
-            targets = ["pyturso"]
             tests = ["test_sample.py::test_fails"]
             """,
             "cause 'having': upstream-bug needs an issue",
@@ -329,7 +282,6 @@ def test_module_entry_marks_every_test_in_module(
             [[cause]]
             name = "limits"
             kind = "stdlib-internal"
-            targets = ["pyturso"]
             tests = ["test_sample.py::test_fails"]
             """,
             "cause 'limits': stdlib-internal needs a reason",
@@ -340,16 +292,14 @@ def test_module_entry_marks_every_test_in_module(
             [[cause]]
             name = "dates"
             kind = "pending"
-            targets = ["pyturso"]
             tests = ["test_sample.py::test_fails"]
 
             [[cause]]
             name = "binary"
             kind = "pending"
-            targets = ["sync-server", "pyturso"]
             tests = ["test_sample.py::test_fails"]
             """,
-            "test_sample.py::test_fails listed more than once for target pyturso",
+            "test_sample.py::test_fails listed more than once",
             id="duplicate-test",
         ),
         pytest.param(
@@ -357,7 +307,7 @@ def test_module_entry_marks_every_test_in_module(
             [[cause]]
             name = "dates"
             kind = "pending"
-            target = ["pyturso"]
+            target = "pyturso"
             tests = ["test_sample.py::test_fails"]
             """,
             "cause #1: unknown fields: target",
@@ -373,7 +323,7 @@ def test_module_entry_marks_every_test_in_module(
             [[cause]]
             reason = "no name"
             """,
-            "cause #1: missing fields: targets",
+            "cause #2: missing fields: name, kind, tests",
             id="missing-field",
         ),
         pytest.param(
@@ -500,13 +450,11 @@ def test_entry_matching_no_collected_test_stops_run(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::TestDates::test_kept", "test_sample.py::test_gone"]
 
         [[cause]]
         name = "remote exception class"
         kind = "pending"
-        targets = ["sync-server"]
         tests = ["test_sample.py::TestGone"]
         """,
     )
@@ -553,7 +501,6 @@ def test_entry_outside_partial_run_is_not_stale(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_other.py::test_indexed"]
         """,
     )
@@ -581,7 +528,6 @@ def test_entry_outside_last_failed_rerun_is_not_stale(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::test_indexed"]
         """,
     )
@@ -617,7 +563,6 @@ def test_class_entry_covers_unittest_class_setup_error(
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::DatesTests"]
         """,
     )
@@ -642,7 +587,6 @@ def test_invalid_index_stops_run_before_starting_workers(
         [[cause]]
         name = "dates"
         kind = "pendng"
-        targets = ["pyturso"]
         tests = ["test_sample.py::test_fails"]
         """,
     )
@@ -673,7 +617,6 @@ def test_pending_entry_marks_test_with_failing_subtest_expected_failure(
         [[cause]]
         name = "missing scalar UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::FunctionTests::test_functions"]
         """,
     )
@@ -704,7 +647,6 @@ def test_pending_entry_fails_run_when_every_subtest_passes(
         [[cause]]
         name = "missing scalar UDFs"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["test_sample.py::FunctionTests::test_functions"]
         """,
     )
@@ -737,7 +679,6 @@ def test_unsupported_entry_fails_run_when_subtest_fails_otherwise(
         [[cause]]
         name = "no tz"
         kind = "unsupported"
-        targets = ["pyturso"]
         reason = "UTC only"
         tests = ["test_sample.py::FunctionTests::test_functions"]
         """,

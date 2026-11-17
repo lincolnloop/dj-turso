@@ -3,20 +3,18 @@ import subprocess
 import sys
 
 
-def test_report_prints_counts_by_target_kind_and_cause(tmp_path: pathlib.Path) -> None:
+def test_report_prints_counts_by_kind_and_cause(tmp_path: pathlib.Path) -> None:
     index = tmp_path / "index.toml"
     index.write_text(
         """
         [[cause]]
         name = "Binary missing"
         kind = "pending"
-        targets = ["pyturso"]
         tests = ["tests/vendor/django/model_fields/test_binaryfield.py"]
 
         [[cause]]
         name = "missing datetime UDFs"
         kind = "pending"
-        targets = ["pyturso", "sync-server"]
         tests = [
             "tests/vendor/django/datetimes/tests.py::DateTimesTests",
             "tests/vendor/django/db_functions/datetime/test_extract_trunc.py",
@@ -25,7 +23,6 @@ def test_report_prints_counts_by_target_kind_and_cause(tmp_path: pathlib.Path) -
         [[cause]]
         name = "non-UTC time zone"
         kind = "unsupported"
-        targets = ["pyturso"]
         tests = ["tests/vendor/django/timezones/tests.py::NewDatabaseTests"]
         """
     )
@@ -39,20 +36,13 @@ def test_report_prints_counts_by_target_kind_and_cause(tmp_path: pathlib.Path) -
     )
 
     assert completed.stdout == (
-        "target pyturso\n"
-        "  pending 3\n"
-        "    2 missing datetime UDFs\n"
-        "    1 Binary missing\n"
-        "  unsupported 1\n"
-        "    1 non-UTC time zone\n"
-        "  upstream-bug 0\n"
-        "  stdlib-internal 0\n"
-        "target sync-server\n"
-        "  pending 2\n"
-        "    2 missing datetime UDFs\n"
-        "  unsupported 0\n"
-        "  upstream-bug 0\n"
-        "  stdlib-internal 0\n"
+        "pending 3\n"
+        "  2 missing datetime UDFs\n"
+        "  1 Binary missing\n"
+        "unsupported 1\n"
+        "  1 non-UTC time zone\n"
+        "upstream-bug 0\n"
+        "stdlib-internal 0\n"
     )
 
 
@@ -63,7 +53,6 @@ def test_report_rejects_invalid_index(tmp_path: pathlib.Path) -> None:
         [[cause]]
         name = "dates"
         kind = "pendng"
-        targets = ["pyturso"]
         tests = ["tests/vendor/django/datetimes/tests.py"]
         """
     )

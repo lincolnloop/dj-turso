@@ -50,13 +50,10 @@ def pytest_collection_modifyitems(
     if not hasattr(config, "workerinput"):
         with raise_usage_error():
             check_stale_entries(config, [item.nodeid for item in items], causes)
-    target = os.environ.get("DJ_TURSO_TARGET", "pyturso")
-    causes_by_entry = {
-        entry: cause
-        for cause in causes
-        if target in cause.targets
-        for entry in cause.tests
-    }
+    # The stdlib sqlite3 control run must pass without the index.
+    if os.environ.get("DJ_TURSO_TARGET", "pyturso") == "sqlite":
+        causes = []
+    causes_by_entry = {entry: cause for cause in causes for entry in cause.tests}
     for item in items:
         for marker in list(item.iter_markers()):
             if marker.name in MARKER_KINDS:
@@ -64,7 +61,6 @@ def pytest_collection_modifyitems(
                     cause = gap_index.Cause(
                         marker.args[0],
                         MARKER_KINDS[marker.name],
-                        (),
                         (),
                         **marker.kwargs,
                     )

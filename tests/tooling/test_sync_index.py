@@ -19,9 +19,6 @@ def test_sync_appends_unindexed_failures_as_unclassified_pending(
         "def test_indexed():\n"
         "    raise AssertionError\n"
         "\n"
-        "def test_other_target():\n"
-        "    raise AssertionError\n"
-        "\n"
         "def test_setup_error(broken):\n"
         "    pass\n"
         "\n"
@@ -45,17 +42,10 @@ def test_sync_appends_unindexed_failures_as_unclassified_pending(
         "[[cause]]\n"
         'kind = "pending"\n'
         'name = "missing datetime UDFs"\n'
-        'targets = ["pyturso"]\n'
         "tests = [\n"
         '  "suite/test_sample.py::TestDates",\n'
         '  "suite/test_sample.py::test_indexed",\n'
         "]\n"
-        "\n"
-        "[[cause]]\n"
-        'kind = "pending"\n'
-        'name = "remote exception class"\n'
-        'targets = ["sync-server"]\n'
-        'tests = ["suite/test_sample.py::test_other_target"]\n'
     )
     (pytester.path / "index.toml").write_text(index_text)
 
@@ -66,8 +56,6 @@ def test_sync_appends_unindexed_failures_as_unclassified_pending(
             "scripts.sync_index",
             "--junit",
             pytester.path / "junit.xml",
-            "--target",
-            "pyturso",
             "--index",
             pytester.path / "index.toml",
             "--root",
@@ -79,17 +67,15 @@ def test_sync_appends_unindexed_failures_as_unclassified_pending(
         text=True,
     )
 
-    assert completed.stdout == "added 4\n"
+    assert completed.stdout == "added 3\n"
     assert (pytester.path / "index.toml").read_text() == (
         index_text + "\n"
         "[[cause]]\n"
         'kind = "pending"\n'
         'name = "unclassified"\n'
-        'targets = ["pyturso"]\n'
         "tests = [\n"
         '  "suite/test_sample.py::TestTimes::test_param[a.b]",\n'
         '  "suite/test_sample.py::TestTimes::test_param[c]",\n'
-        '  "suite/test_sample.py::test_other_target",\n'
         '  "suite/test_sample.py::test_setup_error",\n'
         "]\n"
     )
@@ -109,7 +95,6 @@ def test_sync_leaves_index_alone_without_new_failures(
         "[[cause]]\n"
         'kind = "pending"\n'
         'name = "missing datetime UDFs"\n'
-        'targets = ["pyturso"]\n'
         'tests = ["test_sample.py::test_indexed"]\n'
     )
     (pytester.path / "index.toml").write_text(index_text)
@@ -121,8 +106,6 @@ def test_sync_leaves_index_alone_without_new_failures(
             "scripts.sync_index",
             "--junit",
             pytester.path / "junit.xml",
-            "--target",
-            "pyturso",
             "--index",
             pytester.path / "index.toml",
             "--root",
@@ -151,8 +134,6 @@ def test_sync_rejects_collection_errors(pytester: pytest.Pytester) -> None:
             "scripts.sync_index",
             "--junit",
             pytester.path / "junit.xml",
-            "--target",
-            "pyturso",
             "--index",
             pytester.path / "index.toml",
             "--root",
@@ -190,8 +171,6 @@ def test_sync_rejects_failure_without_test_module(pytester: pytest.Pytester) -> 
             "scripts.sync_index",
             "--junit",
             pytester.path / "junit.xml",
-            "--target",
-            "pyturso",
             "--index",
             pytester.path / "index.toml",
             "--root",
