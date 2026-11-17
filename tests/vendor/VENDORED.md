@@ -18,8 +18,9 @@ Apps (collected as tests): `aggregation`, `aggregation_regress`, `annotations`,
 `multiple_database`, `queries`, `schema`, `serializers`, `test_utils`, `timezones`,
 `transaction_hooks`, `transactions`.
 
-Support (imported by the apps, not collected): `custom_migration_operations`,
-`user_commands`, `urls.py`, `templates`.
+Support (imported or installed by the apps' tests, not collected): `basic`,
+`custom_migration_operations`, `import_error_package`, `migrations2`, `templates`,
+`urls.py`, `user_commands`.
 
 ## Refresh
 

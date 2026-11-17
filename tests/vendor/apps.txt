@@ -28,7 +28,10 @@ transaction_hooks
 transactions
 
 [support]
+basic
 custom_migration_operations
-user_commands
-urls.py
+import_error_package
+migrations2
 templates
+urls.py
+user_commands
