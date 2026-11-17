@@ -145,3 +145,26 @@ def test_unreachable_host_raises_operational_error(
         "request to http://127.0.0.1:1/v3/cursor failed: "
         f"[Errno {errno.ECONNREFUSED}] {os.strerror(errno.ECONNREFUSED)}"
     )
+
+
+def test_error_status_without_json_body_raises_operational_error(
+    django_db_blocker: pytest_django.DjangoDbBlocker, sqld_url: str
+) -> None:
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": f"{sqld_url}/missing",
+                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+            }
+        }
+    )
+    connection = handler["default"]
+
+    with (
+        django_db_blocker.unblock(),
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        connection.ensure_connection()
+
+    assert str(excinfo.value) == "HTTP status 404"

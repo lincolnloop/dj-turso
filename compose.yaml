@@ -6,7 +6,7 @@ services:
     image: ghcr.io/tursodatabase/libsql-server:v0.24.33
     environment:
       # Public half of a test-only Ed25519 key: the server then demands a token, so
-      # the tests see a wrong one refused. The matching token is in tests/core.
+      # the tests see a wrong one refused. The matching token is in tests/utils.py.
       - SQLD_AUTH_JWT_KEY=5gtfrdR2LNE1CnjuZWbFYykndXKfK4UYYIRIPqlxSLA
     ports:
       - "${DJ_TURSO_SQLD_PORT:-8880}:8080"

@@ -12,6 +12,8 @@ from turso import _turso
 # Remote names need the serverless extra; without it, local names still work.
 try:
     import turso_serverless
+
+    from dj_turso import session
 except ImportError as exc:
     serverless_import_error: ImportError | None = exc
 else:
@@ -64,17 +66,8 @@ def get_database_module(name: str) -> DatabaseModule:
     if urllib.parse.urlsplit(name).scheme in REMOTE_SCHEMES:
         if serverless_import_error is not None:
             raise ImportError(MISSING_SERVERLESS_EXTRA) from serverless_import_error
-        return DatabaseModule(turso_serverless, connect_remote)
+        return DatabaseModule(turso_serverless, session.connect)
     return DatabaseModule(turso, turso.connect)
-
-
-# Django's sqlite3 backend names the target "database"; turso_serverless, "url".
-def connect_remote(
-    database: str, *, auth_token: str | None = None, isolation_level: str | None = None
-) -> t.Any:
-    return turso_serverless.connect(
-        database, auth_token=auth_token, isolation_level=isolation_level
-    )
 
 
 # pyturso raises SQLite's generic error code, stdlib sqlite3's OperationalError, as

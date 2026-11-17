@@ -3,6 +3,7 @@ import http.client
 import os
 import pathlib
 import typing as t
+import urllib.parse
 
 import django.db
 import django.db.utils
@@ -10,12 +11,7 @@ import pytest
 import pytest_django
 
 from dj_turso import base
-
-# Signed by the test-only key whose public half compose.yaml gives the sqld service.
-SQLD_JWT = (
-    "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicncifQ."
-    "n8r4qqfg1S8pfrOIl_C7EMdnotATmuPCsVYz-lXO9JUDcrEOYUVM-AadvNwy8GVE9gmT3g8DL_bfKk6QevR1CQ"
-)
+from tests import utils
 
 
 # Per-worker database files: two processes cannot open one Turso file.
@@ -72,7 +68,7 @@ def remote_target(
 ) -> collections.abc.Iterator[base.DatabaseWrapper]:
     if request.param == "sqld":
         url = request.getfixturevalue("sqld_url")
-        auth_token = SQLD_JWT
+        auth_token = utils.SQLD_JWT
     else:
         url = os.environ.get("TURSO_DATABASE_URL", "")
         auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
@@ -84,6 +80,33 @@ def remote_target(
                 "ENGINE": "dj_turso",
                 "NAME": url,
                 "OPTIONS": {"auth_token": auth_token},
+            }
+        }
+    )
+    connection = t.cast("base.DatabaseWrapper", handler["default"])
+    with django_db_blocker.unblock():
+        yield connection
+        connection.close()
+
+
+@pytest.fixture
+def proxy(sqld_url: str) -> collections.abc.Iterator[utils.CountingProxy]:
+    parts = urllib.parse.urlsplit(sqld_url)
+    proxy = utils.CountingProxy(str(parts.hostname), int(str(parts.port)))
+    yield proxy
+    proxy.close()
+
+
+@pytest.fixture
+def proxied_target(
+    django_db_blocker: pytest_django.DjangoDbBlocker, proxy: utils.CountingProxy
+) -> collections.abc.Iterator[base.DatabaseWrapper]:
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": f"http://127.0.0.1:{proxy.port}",
+                "OPTIONS": {"auth_token": utils.SQLD_JWT},
             }
         }
     )
