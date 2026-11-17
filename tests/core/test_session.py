@@ -151,3 +151,51 @@ def test_lost_transaction_fails_every_later_statement_unsent(
         session.LostTransactionError,
     ]
     assert proxy.received_request_count == 3
+
+
+def test_malformed_response_inside_transaction_loses_transaction(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        proxy.answer_next_requests(b"not json\n")
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+        protocol.ProtocolError,
+    ]
+    assert proxied_target.is_usable() is False
+
+
+# A cursor error makes the driver ask for the transaction state in a pipeline, whose
+# malformed answer ends the stream.
+def test_malformed_state_answer_inside_transaction_loses_transaction(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        proxy.answer_next_requests(
+            b'{"baton": "baton", "base_url": null}\n'
+            b'{"type": "error", "error": {"message": "cursor failed"}}\n',
+            b"not json",
+        )
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+        protocol.ServerError,
+    ]
+    assert proxied_target.is_usable() is False

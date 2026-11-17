@@ -38,6 +38,7 @@ class CountingProxy:
         self.received_request_count = 0
         self.open_sockets: dict[socket.socket, socket.socket] = {}
         self.drop_next_request = False
+        self.answer_bodies: list[bytes] = []
         threading.Thread(target=self.accept_connections, daemon=True).start()
 
     def wait_for_open_connection_count(self, count: int) -> int:
@@ -56,6 +57,12 @@ class CountingProxy:
     def fail_next_request(self) -> None:
         with self.condition:
             self.drop_next_request = True
+
+    # The next requests reach the proxy whole and get these bodies, with status 200,
+    # in place of the server's answers.
+    def answer_next_requests(self, *bodies: bytes) -> None:
+        with self.condition:
+            self.answer_bodies.extend(bodies)
 
     def close(self) -> None:
         self.listener.close()
@@ -88,9 +95,16 @@ class CountingProxy:
                 with self.condition:
                     self.received_request_count += 1
                     dropping, self.drop_next_request = self.drop_next_request, False
+                    answer = self.answer_bodies.pop(0) if self.answer_bodies else None
                 if dropping:
                     break
-                upstream.sendall(request)
+                if answer is None:
+                    upstream.sendall(request)
+                else:
+                    client.sendall(
+                        b"HTTP/1.1 200 OK\r\n"
+                        b"Content-Length: %d\r\n\r\n%s" % (len(answer), answer)
+                    )
         self.close_pair(client)
 
     def forward_responses(self, client: socket.socket, upstream: socket.socket) -> None:

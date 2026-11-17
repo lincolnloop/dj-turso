@@ -33,18 +33,29 @@ class KeepAliveSession(serverless_session.Session):
         self.http_connection_origin: tuple[str, str] | None = None
         self.transaction_lost = False
 
+    # A failed statement that leaves no transaction behind the one it ran in lost
+    # it, however the stream ended.
+    def execute_stmt(
+        self,
+        sql: str,
+        args: list[t.Any] | None = None,
+        named_args: list[tuple[str, t.Any]] | None = None,
+        want_rows: bool = True,
+    ) -> serverless_session.StmtResult:
+        in_transaction = not self._autocommit
+        try:
+            return super().execute_stmt(sql, args, named_args, want_rows)
+        except RuntimeError as exc:
+            if in_transaction and self._autocommit:
+                self.transaction_lost = True
+                raise LostTransactionError from exc
+            raise
+
     # Like a broken PostgreSQL connection, nothing runs again until Django closes it.
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.transaction_lost:
             raise LostTransactionError
-        in_transaction = not self._autocommit
-        try:
-            return self.post_on_connection(path, body)
-        except protocol.ProtocolError as exc:
-            if not in_transaction:
-                raise
-            self.transaction_lost = True
-            raise LostTransactionError from exc
+        return self.post_on_connection(path, body)
 
     def close(self) -> None:
         try:
