@@ -10,6 +10,8 @@ import pytest_django
 import turso
 from django.db.backends.base import base
 
+from tests import utils
+
 RegisterDatabase = collections.abc.Callable[
     [str, dict[str, t.Any]], base.BaseDatabaseWrapper
 ]
@@ -160,7 +162,7 @@ def test_url_name_without_test_name_is_improperly_configured(
     )
 
     with pytest.raises(django.core.exceptions.ImproperlyConfigured) as excinfo:
-        connection.creation.create_test_db(verbosity=0, serialize=False)
+        connection.creation.create_test_db(verbosity=0)
 
     assert str(excinfo.value) == (
         "Database 'creation' has a URL NAME, so its TEST NAME must be set: dj-turso "
@@ -190,3 +192,30 @@ def test_url_name_tests_on_local_test_name(
     assert test_name == str(tmp_path / "test_remote.db")
     assert rows == [("core_tag",)]
     assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
+def test_url_test_name_is_left_in_place(
+    register_database: RegisterDatabase, sqld_url: str
+) -> None:
+    connection = register_database(
+        "creation",
+        {
+            "ENGINE": "dj_turso",
+            "NAME": sqld_url,
+            "OPTIONS": {"auth_token": utils.SQLD_JWT},
+            "TEST": {"NAME": sqld_url},
+        },
+    )
+
+    test_name = connection.creation.create_test_db(verbosity=0)
+    connection.creation.destroy_test_db(sqld_url, verbosity=0)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE 'core%' ORDER BY name"
+        )
+        rows = cursor.fetchall()
+        for (table,) in rows:
+            cursor.execute(f'DROP TABLE "{table}"')
+
+    assert test_name == sqld_url
+    assert rows == [("core_attachment",), ("core_tag",)]
