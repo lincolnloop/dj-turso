@@ -9,7 +9,13 @@ def index_pytester(
     monkeypatch: pytest.MonkeyPatch, pytester: pytest.Pytester
 ) -> pytest.Pytester:
     pytester.makeconftest(
-        "from tests.conftest import pytest_collection_modifyitems, pytest_configure"
+        """
+        from tests.conftest import (
+            pytest_collection_modifyitems,
+            pytest_configure,
+            pytest_xdist_node_collection_finished,
+        )
+        """
     )
     monkeypatch.setenv("DJ_TURSO_INDEX", str(pytester.path / "index.toml"))
     monkeypatch.setenv("DJ_TURSO_TARGET", "pyturso")

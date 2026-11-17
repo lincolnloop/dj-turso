@@ -3,6 +3,60 @@
 import dataclasses
 import pathlib
 import tomllib
+import typing as t
+
+KINDS = ("pending", "unsupported", "upstream-bug", "stdlib-internal")
+
+TARGETS = ("pyturso", "sync-server")
+
+
+class InvalidIndexError(Exception):
+    pass
+
+
+class UnknownTablesError(InvalidIndexError):
+    def __init__(self, names: list[str]) -> None:
+        super().__init__(f"unknown index tables: {', '.join(names)}")
+
+
+class UnknownFieldsError(InvalidIndexError):
+    def __init__(self, number: int, names: list[str]) -> None:
+        super().__init__(f"cause #{number}: unknown fields: {', '.join(names)}")
+
+
+class MissingFieldsError(InvalidIndexError):
+    def __init__(self, number: int, names: list[str]) -> None:
+        super().__init__(f"cause #{number}: missing fields: {', '.join(names)}")
+
+
+class UnknownKindError(InvalidIndexError):
+    def __init__(self, cause: str, kind: str) -> None:
+        super().__init__(f"cause {cause!r}: unknown kind {kind!r}")
+
+
+class UnknownTargetError(InvalidIndexError):
+    def __init__(self, cause: str, target: str) -> None:
+        super().__init__(f"cause {cause!r}: unknown target {target!r}")
+
+
+class MissingIssueError(InvalidIndexError):
+    def __init__(self, cause: str) -> None:
+        super().__init__(f"cause {cause!r}: upstream-bug needs an issue")
+
+
+class MissingReasonError(InvalidIndexError):
+    def __init__(self, cause: str) -> None:
+        super().__init__(f"cause {cause!r}: stdlib-internal needs a reason")
+
+
+class DuplicateTestError(InvalidIndexError):
+    def __init__(self, test: str, target: str) -> None:
+        super().__init__(f"{test} listed more than once for target {target}")
+
+
+class StaleEntriesError(InvalidIndexError):
+    def __init__(self, entries: list[str]) -> None:
+        super().__init__(f"index entries match no collected test: {', '.join(entries)}")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -10,21 +64,57 @@ class Cause:
     name: str
     kind: str
     targets: tuple[str, ...]
-    reason: str
-    issue: str
     tests: tuple[str, ...]
+    reason: str = ""
+    issue: str = ""
+
+    def __post_init__(self) -> None:
+        if self.kind not in KINDS:
+            raise UnknownKindError(self.name, self.kind)
+        for target in self.targets:
+            if target not in TARGETS:
+                raise UnknownTargetError(self.name, target)
+        if self.kind == "upstream-bug" and not self.issue:
+            raise MissingIssueError(self.name)
+        if self.kind == "stdlib-internal" and not self.reason:
+            raise MissingReasonError(self.name)
 
 
 def load_index(path: pathlib.Path) -> list[Cause]:
     document = tomllib.loads(path.read_text())
-    return [
-        Cause(
-            name=entry["name"],
-            kind=entry["kind"],
-            targets=tuple(entry["targets"]),
-            reason=entry.get("reason", ""),
-            issue=entry.get("issue", ""),
-            tests=tuple(entry["tests"]),
-        )
-        for entry in document.get("cause", [])
+    unknown_tables = sorted(document.keys() - {"cause"})
+    if unknown_tables:
+        raise UnknownTablesError(unknown_tables)
+    causes = [
+        read_cause(number, entry)
+        for number, entry in enumerate(document.get("cause", []), start=1)
     ]
+    check_duplicate_tests(causes)
+    return causes
+
+
+def read_cause(number: int, entry: dict[str, t.Any]) -> Cause:
+    fields = {field.name: field for field in dataclasses.fields(Cause)}
+    unknown = sorted(entry.keys() - fields.keys())
+    if unknown:
+        raise UnknownFieldsError(number, unknown)
+    missing = [
+        name
+        for name, field in fields.items()
+        if name not in entry and field.default is dataclasses.MISSING
+    ]
+    if missing:
+        raise MissingFieldsError(number, missing)
+    return Cause(
+        **entry | {"targets": tuple(entry["targets"]), "tests": tuple(entry["tests"])}
+    )
+
+
+def check_duplicate_tests(causes: list[Cause]) -> None:
+    seen: set[tuple[str, str]] = set()
+    for cause in causes:
+        for target in cause.targets:
+            for test in cause.tests:
+                if (test, target) in seen:
+                    raise DuplicateTestError(test, target)
+                seen.add((test, target))
