@@ -3,17 +3,18 @@ import pathlib
 
 import django.db.utils
 import pytest_django
-from django.db.backends.base import base
+
+from dj_turso import base
 
 
 def test_engine_identifies_as_turso_on_sqlite_vendor(
-    target: base.BaseDatabaseWrapper,
+    target: base.DatabaseWrapper,
 ) -> None:
     assert target.vendor == "sqlite"
     assert target.display_name == "Turso"
 
 
-def test_queries_run_on_turso_engine(target: base.BaseDatabaseWrapper) -> None:
+def test_queries_run_on_turso_engine(target: base.DatabaseWrapper) -> None:
     with target.cursor() as cursor:
         cursor.execute("SELECT turso_version()")
         rows = cursor.fetchall()
@@ -21,7 +22,7 @@ def test_queries_run_on_turso_engine(target: base.BaseDatabaseWrapper) -> None:
     assert rows == [(importlib.metadata.version("pyturso"),)]
 
 
-def test_select_returns_row(target: base.BaseDatabaseWrapper) -> None:
+def test_select_returns_row(target: base.DatabaseWrapper) -> None:
     with target.cursor() as cursor:
         cursor.execute("SELECT 1, 'a'")
         rows = cursor.fetchall()
@@ -30,7 +31,7 @@ def test_select_returns_row(target: base.BaseDatabaseWrapper) -> None:
 
 
 def test_foreign_keys_enforced_on_new_connection(
-    target: base.BaseDatabaseWrapper,
+    target: base.DatabaseWrapper,
 ) -> None:
     with target.cursor() as cursor:
         cursor.execute("PRAGMA foreign_keys")

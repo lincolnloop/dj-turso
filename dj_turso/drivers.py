@@ -1,10 +1,12 @@
 """The PEP 249 driver behind a connection, chosen from the database NAME."""
 
 import collections.abc
+import contextlib
 import types
 import typing as t
 
 import turso
+from turso import _turso
 
 
 class DatabaseModule(types.ModuleType):
@@ -37,3 +39,15 @@ class DatabaseModule(types.ModuleType):
 
 def get_database_module(name: str) -> DatabaseModule:
     return DatabaseModule(turso)
+
+
+# pyturso raises SQLite's generic error code, stdlib sqlite3's OperationalError, as
+# bare DatabaseError; only the engine's own class, left as context, tells it apart.
+@contextlib.contextmanager
+def relabel_engine_errors() -> collections.abc.Iterator[None]:
+    try:
+        yield
+    except turso.DatabaseError as exc:
+        if type(exc) is turso.DatabaseError and type(exc.__context__) is _turso.Error:
+            raise turso.OperationalError(*exc.args) from exc
+        raise

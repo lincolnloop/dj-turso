@@ -3,7 +3,7 @@ import typing as t
 from django.db.backends.sqlite3 import base as sqlite_base
 from django.utils import asyncio
 
-from dj_turso import drivers
+from dj_turso import cursor, drivers
 
 # Options Django's sqlite3 backend sets for the stdlib module that no Turso
 # driver accepts.
@@ -33,7 +33,8 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
 
     @asyncio.async_unsafe
     def get_new_connection(self, conn_params: dict[str, t.Any]) -> t.Any:
-        connection = self.Database.connect(**conn_params)
+        with drivers.relabel_engine_errors():
+            connection = self.Database.connect(**conn_params)
         connection.execute("PRAGMA foreign_keys = ON")
         for init_command in self.init_commands:
             if init_command := init_command.strip():
@@ -41,4 +42,4 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
         return connection
 
     def create_cursor(self, name: str | None = None) -> t.Any:
-        return self.connection.cursor()
+        return cursor.TursoCursorWrapper(self.connection.cursor())
