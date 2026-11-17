@@ -146,8 +146,11 @@ def test_lost_transaction_connection_is_dropped_when_django_checks_it(
             cursor.execute("SELECT 1")
 
     proxied_target.close_if_unusable_or_obsolete()
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        rows = cursor.fetchall()
 
-    assert proxied_target.connection is None
+    assert rows == [(1,)]
 
 
 def test_lost_transaction_fails_every_later_statement_unsent(
