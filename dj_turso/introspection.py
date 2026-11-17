@@ -4,7 +4,7 @@ import typing as t
 from django.db.backends.base import introspection as base_introspection
 from django.db.backends.sqlite3 import introspection as sqlite_introspection
 
-index_name_re = re.compile(
+INDEX_NAME_REGEX = re.compile(
     r'^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?("[^"]+"|\S+)',
     re.IGNORECASE,
 )
@@ -70,5 +70,5 @@ def get_declared_field_info(info: t.Any, schema_sql: str) -> t.Any:
 
 
 def get_declared_index_name(index_sql: str) -> str:
-    name: str = index_name_re.findall(index_sql)[0]
+    name: str = INDEX_NAME_REGEX.findall(index_sql)[0]
     return name.strip('"')
