@@ -12,4 +12,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 
 INSTALLED_APPS = ["tests.core"]
 
+TIME_ZONE = "UTC"
+
 USE_TZ = True

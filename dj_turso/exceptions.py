@@ -23,3 +23,18 @@ class RemoteTestNameRequiredError(
             "dj-turso never creates or destroys remote databases. Use a local "
             "file path, or the URL of a database the tests own."
         )
+
+
+class TimeZoneConversionNotSupportedError(
+    TursoBackendError, django.db.NotSupportedError
+):
+    def __init__(self, tzname: str, database_tzname: str) -> None:
+        super().__init__(
+            "Turso's date functions cannot convert from the database time zone "
+            f"{database_tzname!r} to {tzname!r}. Query in {database_tzname!r} instead."
+        )
+
+
+class UnknownLookupTypeError(TursoBackendError, ValueError):
+    def __init__(self, lookup_type: str, value_type: str) -> None:
+        super().__init__(f"Turso cannot extract {lookup_type!r} from a {value_type}.")

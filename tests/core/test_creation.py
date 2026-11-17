@@ -218,4 +218,4 @@ def test_url_test_name_is_left_in_place(
             cursor.execute(f'DROP TABLE "{table}"')
 
     assert test_name == sqld_url
-    assert rows == [("core_attachment",), ("core_tag",)]
+    assert rows == [("core_attachment",), ("core_event",), ("core_tag",)]
