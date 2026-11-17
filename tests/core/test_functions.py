@@ -94,6 +94,43 @@ def test_bitand_combines_operands() -> None:
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
+    ("expected", "precision", "value"),
+    [
+        pytest.param(decimal.Decimal(370), -1, decimal.Decimal("365.25"), id="decimal"),
+        pytest.param(400.0, -2, 365.25, id="float"),
+        pytest.param(370, -1, 365, id="integer"),
+        pytest.param(-370, -1, -365, id="negative-half"),
+        pytest.param(0, -3, 365, id="beyond-value"),
+    ],
+)
+def test_round_to_negative_precision_rounds_left_of_point(
+    expected: decimal.Decimal | float,
+    precision: int,
+    value: decimal.Decimal | float,
+) -> None:
+    models.Tag.objects.create(name="one")
+
+    values = models.Tag.objects.values_list(
+        functions.Round(expressions.Value(value), precision), flat=True
+    )
+
+    assert list(values) == [expected]
+    assert [type(result) for result in values] == [type(expected)]
+
+
+@pytest.mark.django_db
+def test_round_null_to_negative_precision_is_null() -> None:
+    models.Tag.objects.create(name="one")
+
+    values = models.Tag.objects.values_list(
+        functions.Round(expressions.Value(None, fields.IntegerField()), -1), flat=True
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
     ("function", "version"),
     [
         pytest.param(functions.UUID4, 4, id="uuid4"),

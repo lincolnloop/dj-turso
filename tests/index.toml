@@ -71,6 +71,14 @@ tests = [
 
 [[cause]]
 kind = "stdlib-internal"
+name = "stdlib backend rejects negative ROUND precision"
+reason = "Asserts the ValueError Django's sqlite3 backend raises for a negative ROUND precision; dj-turso rounds left of the decimal point in SQL"
+tests = [
+  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_unsupported_negative_precision",
+]
+
+[[cause]]
+kind = "stdlib-internal"
 name = "in-memory test database never closes"
 reason = "Relies on the in-memory SQLite test database Django's sqlite3 backend uses by default; Turso test databases are files, and closing the shared connection mid-test breaks every later test in the process"
 tests = [
@@ -81,13 +89,9 @@ tests = [
 [[cause]]
 kind = "pending"
 name = "skipped by Django on SQLite"
-reason = "Django's sqlite3 features skip these or expect them to fail (negative ROUND precision, 15-digit decimal storage, naive table remakes, undeterminable executed query, mixed date and datetime comparison after timedelta arithmetic); dj-turso replaces django_test_skips and django_test_expected_failures with this index and has not settled their kind"
+reason = "Django's sqlite3 features skip these or expect them to fail (15-digit decimal storage, naive table remakes, undeterminable executed query, mixed date and datetime comparison after timedelta arithmetic); dj-turso replaces django_test_skips and django_test_expected_failures with this index and has not settled their kind"
 tests = [
   "tests/vendor/django/backends/base/test_base.py::ExecuteWrapperTests::test_wrapper_debug",
-  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_decimal_with_negative_precision",
-  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_float_with_negative_precision",
-  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_integer_with_negative_precision",
-  "tests/vendor/django/db_functions/math/test_round.py::RoundTests::test_null_with_negative_precision",
   "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons1",
   "tests/vendor/django/model_fields/test_decimalfield.py::DecimalFieldTests::test_fetch_from_db_without_float_rounding",
   "tests/vendor/django/schema/tests.py::SchemaTests::test_alter_field_default_doesnt_perform_queries",

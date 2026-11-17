@@ -21,6 +21,10 @@ NATIVE_TEMPLATES: dict[type[expressions.Func], str] = {
     functions.UUID7: "LOWER(HEX(UUID7()))",
 }
 
+# Turso, like SQLite, ignores a negative ROUND precision; scale to units and back.
+# The factor is a real literal so integer operands do not divide as integers.
+ROUND_LEFT_OF_POINT_TEMPLATE = "(ROUND(%(expressions)s / {factor}) * {factor})"
+
 HASH_FUNCTIONS = (
     functions.MD5,
     functions.SHA1,
@@ -44,6 +48,8 @@ class SQLCompiler(compiler.SQLCompiler):
     def compile(self, node: t.Any) -> t.Any:
         if isinstance(node, HASH_FUNCTIONS):
             raise exceptions.HashFunctionNotSupportedError(type(node).__name__)
+        if isinstance(node, functions.Round) and has_negative_precision(node):
+            return compile_round_left_of_point(self, node)
         if isinstance(node, aggregates.Aggregate):
             aggregate_compiler = AGGREGATE_COMPILERS.get(node.function)
             if aggregate_compiler is not None:
@@ -69,6 +75,29 @@ class SQLUpdateCompiler(SQLCompiler, compiler.SQLUpdateCompiler):
 
 class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
     pass
+
+
+def has_negative_precision(node: functions.Round) -> bool:
+    precision = node.get_source_expressions()[1]
+    return isinstance(precision, expressions.Value) and precision.value < 0
+
+
+# Func's own as_sqlite keeps Django's NUMERIC cast of decimal results, which Round's
+# would refuse for a negative precision.
+def compile_round_left_of_point(
+    compiler: SQLCompiler, node: functions.Round
+) -> SQLParams:
+    value, precision = node.get_source_expressions()
+    factor = f"1{'0' * -int(precision.value)}.0"
+    rounded = node.copy()
+    rounded.set_source_expressions([value])
+    sql, params = expressions.Func.as_sqlite(
+        rounded,
+        compiler,
+        compiler.connection,
+        template=ROUND_LEFT_OF_POINT_TEMPLATE.format(factor=factor),
+    )
+    return sql, tuple(params)
 
 
 def compile_any_value(compiler: SQLCompiler, node: t.Any) -> SQLParams:
