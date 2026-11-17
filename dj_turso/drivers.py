@@ -13,6 +13,8 @@ class DatabaseModule(types.ModuleType):
     """What Django's backend reads off its ``Database`` module, for one driver."""
 
     connect: collections.abc.Callable[..., t.Any]
+    # Stdlib sqlite3's Binary: the drivers have none, and the cursor binds it as bytes.
+    Binary = memoryview
     Error: type[Exception]
     InterfaceError: type[Exception]
     DatabaseError: type[Exception]

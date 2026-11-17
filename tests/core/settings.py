@@ -1,9 +1,15 @@
 import os
+import typing as t
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "test-only-not-secret")
 
-DATABASES: dict[str, dict[str, str]] = {}
+# The test run moves both names under its own temporary directory.
+DATABASES: dict[str, dict[str, t.Any]] = {
+    "default": {"ENGINE": "dj_turso", "NAME": "default.db"}
+}
 
-INSTALLED_APPS: list[str] = []
+DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+
+INSTALLED_APPS = ["tests.core"]
 
 USE_TZ = True

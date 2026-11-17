@@ -2,11 +2,23 @@ import collections.abc
 import pathlib
 import typing as t
 
+import django.conf
 import django.db.utils
 import pytest
 import pytest_django
 
 from dj_turso import base
+
+
+# Per-worker database files: two processes cannot open one Turso file.
+@pytest.fixture(scope="session")
+def django_db_modify_db_settings(tmp_path_factory: pytest.TempPathFactory) -> None:
+    directory = tmp_path_factory.mktemp("databases")
+    django.conf.settings.DATABASES["default"] = {
+        "ENGINE": "dj_turso",
+        "NAME": str(directory / "default.db"),
+        "TEST": {"NAME": str(directory / "test_default.db")},
+    }
 
 
 @pytest.fixture(params=[pytest.param("pyturso", id="pyturso")])
