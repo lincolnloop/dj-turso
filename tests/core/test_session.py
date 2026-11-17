@@ -2,6 +2,7 @@ import collections.abc
 import http.client
 import os
 import resource
+import time
 
 import django.db
 import pytest
@@ -242,3 +243,57 @@ def test_connection_closed_by_server_answer_reconnects(
 
     assert rows == [(1,)]
     assert proxy.accepted_connection_count == 2
+
+
+# Long enough for both Turso Cloud and sqld to have expired the stream.
+IDLE_PAST_STREAM_EXPIRY = 12.5
+
+
+@pytest.mark.timeout(30)
+def test_query_after_stream_expiry_starts_new_stream_unsent_to_old(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        cursor.execute("SELECT 2")
+        rows = cursor.fetchall()
+
+    assert rows == [(2,)]
+    # Setup and a query on each stream.
+    assert proxy.received_request_count == 4
+
+
+@pytest.mark.timeout(30)
+def test_query_after_stream_expiry_runs_with_session_setup(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    with remote_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        cursor.execute("PRAGMA foreign_keys")
+        rows = cursor.fetchall()
+
+    assert rows == [(1,)]
+
+
+@pytest.mark.timeout(30)
+def test_stream_expiry_inside_transaction_loses_transaction_unsent(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+    ]
+    assert proxy.received_request_count == 2
+    assert proxied_target.is_usable() is False

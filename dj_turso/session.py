@@ -4,6 +4,7 @@ import http
 import http.client
 import json
 import selectors
+import time
 import typing as t
 import urllib.parse
 
@@ -12,6 +13,10 @@ from turso_serverless import protocol
 from turso_serverless import session as serverless_session
 
 from dj_turso import exceptions
+
+# Seconds a server stream outlives its last request: Turso's HTTP API docs give it,
+# and Turso Cloud and sqld both expire streams at it.
+STREAM_IDLE_TIMEOUT = 10
 
 
 class LostTransactionError(
@@ -34,6 +39,7 @@ class KeepAliveSession(serverless_session.Session):
         self.transaction_lost = False
         self.setup_statements: list[str] = []
         self.starting_stream = False
+        self.last_response_time = time.monotonic()
 
     # A failed statement that leaves no transaction behind the one it ran in lost
     # it, however the stream ended.
@@ -57,6 +63,17 @@ class KeepAliveSession(serverless_session.Session):
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.transaction_lost:
             raise LostTransactionError
+        # Never sent to an expired stream: the server would refuse it, or, on Turso
+        # Cloud, roll its transaction back and answer in autocommit.
+        if (
+            self._baton is not None
+            and time.monotonic() - self.last_response_time > STREAM_IDLE_TIMEOUT
+        ):
+            in_transaction = not self._autocommit
+            self._reset_stream()
+            if in_transaction:
+                self.transaction_lost = True
+                raise LostTransactionError
         if self._baton is None and not self.starting_stream:
             self.start_stream()
             body = body | {"baton": self._baton}
@@ -75,6 +92,7 @@ class KeepAliveSession(serverless_session.Session):
             )
         finally:
             self.starting_stream = False
+        self.last_response_time = time.monotonic()
         for result in results:
             if result["type"] == "error":
                 error = result["error"]
@@ -115,6 +133,7 @@ class KeepAliveSession(serverless_session.Session):
         if response.status != http.HTTPStatus.OK:
             self._reset_stream()
             raise protocol.ProtocolError(get_status_message(response.status, raw))
+        self.last_response_time = time.monotonic()
         return raw
 
     # Reconnects only before sending: a socket the server closed while idle reads
