@@ -3,6 +3,7 @@ import pathlib
 import typing as t
 
 import django.conf
+import django.core.exceptions
 import django.db
 import pytest
 import pytest_django
@@ -149,3 +150,43 @@ def test_clone_raises_not_supported_error(
         "Turso test databases cannot be cloned: two processes cannot open one "
         "database file. Give each test process its own test database instead."
     )
+
+
+def test_url_name_without_test_name_is_improperly_configured(
+    register_database: RegisterDatabase,
+) -> None:
+    connection = register_database(
+        "creation", {"ENGINE": "dj_turso", "NAME": "https://example.invalid"}
+    )
+
+    with pytest.raises(django.core.exceptions.ImproperlyConfigured) as excinfo:
+        connection.creation.create_test_db(verbosity=0, serialize=False)
+
+    assert str(excinfo.value) == (
+        "Database 'creation' has a URL NAME, so its TEST NAME must be set: dj-turso "
+        "never creates or destroys remote databases. Use a local file path, or the "
+        "URL of a database the tests own."
+    )
+
+
+def test_url_name_tests_on_local_test_name(
+    register_database: RegisterDatabase, tmp_path: pathlib.Path
+) -> None:
+    connection = register_database(
+        "creation",
+        {
+            "ENGINE": "dj_turso",
+            "NAME": "https://example.invalid",
+            "TEST": {"NAME": str(tmp_path / "test_remote.db")},
+        },
+    )
+
+    test_name = connection.creation.create_test_db(verbosity=0)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT name FROM sqlite_master WHERE name = 'core_tag'")
+        rows = cursor.fetchall()
+    connection.creation.destroy_test_db("https://example.invalid", verbosity=0)
+
+    assert test_name == str(tmp_path / "test_remote.db")
+    assert rows == [("core_tag",)]
+    assert sorted(path.name for path in tmp_path.iterdir()) == []

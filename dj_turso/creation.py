@@ -3,7 +3,7 @@ import pathlib
 from django.db.backends.base import creation as base_creation
 from django.db.backends.sqlite3 import creation as sqlite_creation
 
-from dj_turso import exceptions
+from dj_turso import drivers, exceptions
 
 # Files a Turso database keeps beside its main file.
 DATABASE_FILE_SUFFIXES = ("", "-wal", "-shm")
@@ -15,6 +15,8 @@ class DatabaseCreation(sqlite_creation.DatabaseCreation):
         if test_name:
             return test_name
         name = str(self.connection.settings_dict["NAME"])
+        if drivers.is_remote_name(name):
+            raise exceptions.RemoteTestNameRequiredError(self.connection.alias)
         if self.is_in_memory_db(name):
             return name
         path = pathlib.Path(name)

@@ -65,8 +65,12 @@ class DatabaseModule(types.ModuleType):
         self.NotSupportedError = driver.NotSupportedError
 
 
+def is_remote_name(name: str) -> bool:
+    return urllib.parse.urlsplit(name).scheme in REMOTE_SCHEMES
+
+
 def get_database_module(name: str) -> DatabaseModule:
-    if urllib.parse.urlsplit(name).scheme in REMOTE_SCHEMES:
+    if is_remote_name(name):
         if serverless_import_error is not None:
             raise ImportError(MISSING_SERVERLESS_EXTRA) from serverless_import_error
         return DatabaseModule(turso_serverless, session.connect, session.is_usable)

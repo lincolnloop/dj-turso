@@ -37,6 +37,8 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
 
     @asyncio.async_unsafe
     def get_new_connection(self, conn_params: dict[str, t.Any]) -> t.Any:
+        # Test database setup swaps NAME after init, possibly from a URL to a file.
+        self.Database = drivers.get_database_module(conn_params["database"])
         with drivers.relabel_engine_errors():
             connection = self.Database.connect(**conn_params)
         connection.execute("PRAGMA foreign_keys = ON")
