@@ -1,0 +1,75 @@
+---
+name: test
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read # to fetch code (actions/checkout)
+
+concurrency:
+  # Abort pending builds if there's an update.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tox:
+    name: ${{ matrix.name || matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - py312-django61
+          - py315-django61
+          - dev
+        # Named for the resolution, not the Python, so a required check survives a
+        # Python bump.
+        include:
+          - env: py312-django61-mypy
+            name: mypy-lowest
+    env:
+      # Worker count for tox's `-n auto`; a runner has more cores than the suites
+      # profitably use, and 2 is enough to keep the parallel path exercised.
+      PYTEST_XDIST_AUTO_NUM_WORKERS: "2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # full history + tags so hatch-vcs can derive the version
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Run tox
+        run: uvx --with tox-uv tox -e "${{ matrix.env }}"
+      - name: Upload coverage to Codecov
+        if: ${{ (success() || failure()) && !contains(matrix.env, 'mypy') }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ matrix.env }}
+          fail_ci_if_error: true
+      - name: Upload test results to Codecov
+        if: ${{ (success() || failure()) && !contains(matrix.env, 'mypy') }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          flags: ${{ matrix.env }}
+          fail_ci_if_error: true
+          files: junit-core.xml
+
+  build:
+    name: build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # full history + tags so hatch-vcs can derive the version
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Check distribution metadata
+        run: uvx twine check --strict dist/*

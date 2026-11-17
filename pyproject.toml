@@ -1,0 +1,167 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatch-vcs==0.5.0", "hatchling==1.33.0"]
+
+[dependency-groups]
+dev = [
+  "argon2-cffi==25.1.0",
+  "bcrypt==5.0.0",
+  "build==1.6.1",
+  "django-stubs==6.1.2",
+  "docutils==0.23",
+  "hatch-vcs==0.5.0",
+  "hatchling==1.33.0",
+  "jinja2==3.1.6",
+  "mypy==2.4.1",
+  "numpy==2.5.4",
+  "pillow==13.0.0",
+  "pre-commit==4.7.0",
+  "pytest-cov==7.1.0",
+  "pytest-django==4.14.0",
+  "pytest-timeout==2.4.0",
+  "pytest-xdist==3.8.0",
+  "pytest==9.2.0",
+  "pyyaml==6.0.3",
+  "ruff==0.17.4",
+  "sqlparse==0.6.1",
+  "turso-serverless==0.1.0",
+  "tzdata==2026.6",
+]
+
+[project]
+authors = [
+  { name = "Marc Gibbons", email = "marc@lincolnloop.com" },
+  { name = "Lincoln Loop", email = "info@lincolnloop.com" },
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Web Environment",
+  "Framework :: Django",
+  "Framework :: Django :: 6.1",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Database",
+  "Typing :: Typed",
+]
+dependencies = [
+  "Django>=6.1,<6.2",
+  "pyturso>=0.8.3",
+]
+description = "Django database backend for Turso, local files and Turso Cloud."
+dynamic = ["version"]
+keywords = [
+  "database",
+  "django",
+  "sqlite",
+  "turso",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+name = "dj-turso"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+serverless = [
+  "turso-serverless>=0.1.0,<0.2",
+]
+
+[tool.coverage.report]
+exclude_also = [
+  "if t.TYPE_CHECKING:",
+]
+skip_covered = true
+
+[tool.coverage.run]
+branch = true
+omit = ["tests/vendor/*"]
+# `source_dirs`, not `source`: the XML report strips a `source` prefix from each
+# filename, so same-named files in different dirs would merge into one.
+source_dirs = ["dj_turso", "tests"]
+
+[tool.django-stubs]
+django_settings_module = "tests.core.settings"
+
+[tool.hatch.build.targets.sdist]
+include = ["dj_turso"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["dj_turso"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.mypy]
+exclude = [
+  "^\\.bin/",
+  "^\\.tox/",
+  "^bench/",
+  "^build/",
+  "^dist/",
+  "^reference/",
+  "^tests/vendor/",
+]
+plugins = ["mypy_django_plugin.main"]
+strict = true
+
+[tool.pytest.ini_options]
+addopts = [
+  "--ignore=bench",
+  "--ignore=reference",
+  "--ignore=tests/core",
+  "--strict-markers",
+]
+
+[tool.ruff]
+extend-exclude = ["bench", "reference", "tests/vendor"]
+target-version = "py312"
+
+[tool.ruff.lint]
+ignore = [
+  "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed in `**kwargs`
+  "ARG001",  # Unused function argument
+  "ARG002",  # Unused method argument
+  "COM812",  # Check absence of trailing commas. Made redundant by formatter.
+  "CPY001",  # Missing copyright notice. This project doesn't use file headers.
+  "D",  # Missing or badly formatted docstrings
+  "FBT",  # Flake Boolean Trap
+  "PLR2004",  # Allow "magic values"
+  "RUF012",  # Mutable class attributes
+]
+select = ["ALL"]
+
+[tool.ruff.lint.extend-per-file-ignores]
+"**/migrations/*" = [
+  "E501",  # Allow exceeded line length in migrations.
+]
+"**/tests/**/*" = [
+  "S101",  # Allow use of asserts
+  "S603",  # Allow subprocess calls in tests
+  "SLF001",  # Allow private member access in tests (e.g. _meta)
+]
+
+[tool.ruff.lint.flake8-import-conventions]
+banned-from = [
+  "datetime",  # Use `import datetime as dt`, not `from datetime import ...`
+  "typing",  # Use `import typing as t`, not `from typing import ...`
+]
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+datetime = "dt"
+typing = "t"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+[tool.uv]
+# Mirror Renovate's minimumReleaseAge cooloff for local/CI resolution.
+exclude-newer = "7 days"

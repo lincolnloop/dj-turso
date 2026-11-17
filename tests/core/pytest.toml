@@ -1,0 +1,13 @@
+[pytest]
+DJANGO_SETTINGS_MODULE = "tests.core.settings"
+addopts = [
+  "--confcutdir=..",
+  "--cov",
+  "--cov-report=xml",
+  "--junitxml=junit-core.xml",
+  "--strict-markers",
+]
+pythonpath = ["../.."]
+testpaths = ["."]
+timeout = "10"
+xfail_strict = true
