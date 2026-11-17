@@ -1,0 +1,4 @@
+# Known gaps per Turso target, applied by tests/conftest.py. One [[cause]] per reason:
+# name, kind (pending | unsupported | upstream-bug | stdlib-internal),
+# targets (pyturso, sync-server), reason, issue (upstream-bug), tests (node ids or
+# class/module prefixes).
