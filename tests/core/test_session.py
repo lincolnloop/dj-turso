@@ -81,6 +81,18 @@ def test_close_closes_socket(
     assert proxy.wait_for_open_connection_count(0) == 0
 
 
+def test_failed_session_setup_closes_socket(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.settings_dict["OPTIONS"]["init_command"] = "SELECT * FROM missing"
+
+    with pytest.raises(django.db.OperationalError) as excinfo:
+        proxied_target.ensure_connection()
+
+    assert str(excinfo.value) == "SQLite error: no such table: missing"
+    assert proxy.wait_for_open_connection_count(0) == 0
+
+
 def test_failed_request_outside_transaction_is_not_resent(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:

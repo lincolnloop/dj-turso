@@ -210,6 +210,7 @@ def set_up_session(connection: KeepAliveConnection, statements: list[str]) -> No
     try:
         connection.session.start_stream()
     except RuntimeError as exc:
+        connection.close()
         raise turso_serverless.OperationalError(str(exc)) from exc
 
 
