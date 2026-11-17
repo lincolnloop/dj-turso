@@ -1,4 +1,7 @@
+import collections.abc
 import http.client
+import os
+import resource
 
 import django.db
 import pytest
@@ -6,6 +9,21 @@ from turso_serverless import protocol
 
 from dj_turso import base, session
 from tests import utils
+
+
+# Fills the descriptor table so the next socket opened lands at 1024 or above, past
+# what select() can watch.
+@pytest.fixture
+def high_file_descriptors() -> collections.abc.Iterator[None]:
+    soft_limit, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max(soft_limit, 1100), hard_limit))
+    descriptors = [os.open(os.devnull, os.O_RDONLY)]
+    while descriptors[-1] < 1023:
+        descriptors.append(os.dup(descriptors[0]))
+    yield
+    for descriptor in descriptors:
+        os.close(descriptor)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (soft_limit, hard_limit))
 
 
 def test_queries_reuse_one_tcp_connection(
@@ -32,6 +50,19 @@ def test_idle_closed_socket_reconnects_before_send(
     assert proxy.accepted_connection_count == 2
     # The connection's foreign key pragma, then each query once.
     assert proxy.received_request_count == 3
+
+
+@pytest.mark.usefixtures("high_file_descriptors")
+def test_socket_past_select_limit_is_reused(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        cursor.execute("SELECT 2")
+        rows = cursor.fetchall()
+
+    assert rows == [(2,)]
+    assert proxy.accepted_connection_count == 1
 
 
 def test_close_closes_socket(

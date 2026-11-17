@@ -3,7 +3,7 @@
 import http
 import http.client
 import json
-import select
+import selectors
 import typing as t
 import urllib.parse
 
@@ -54,8 +54,8 @@ class KeepAliveSession(serverless_session.Session):
     def post_on_connection(self, path: str, body: dict[str, t.Any]) -> bytes:
         url = f"{self._base_url}{path}"
         parts = urllib.parse.urlsplit(url)
-        connection = self.get_http_connection(parts.scheme, parts.netloc)
         try:
+            connection = self.get_http_connection(parts.scheme, parts.netloc)
             connection.request(
                 "POST",
                 parts.path,
@@ -121,9 +121,11 @@ def is_usable(connection: KeepAliveConnection) -> bool:
 
 
 def is_closed_by_server(connection: http.client.HTTPConnection) -> bool:
-    return connection.sock is not None and bool(
-        select.select([connection.sock], [], [], 0)[0]
-    )
+    if connection.sock is None:
+        return False
+    with selectors.DefaultSelector() as selector:
+        selector.register(connection.sock, selectors.EVENT_READ)
+        return bool(selector.select(timeout=0))
 
 
 # The server's JSON "error", as upstream reports a non-200 status; bodies that are
