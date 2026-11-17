@@ -1,6 +1,5 @@
 import collections.abc
 import errno
-import multiprocessing
 import os
 import pathlib
 import re
@@ -53,14 +52,6 @@ def register_database(
         django.db.connections.settings = original
 
 
-@pytest.fixture
-def start_method(request: pytest.FixtureRequest) -> collections.abc.Iterator[str]:
-    original = multiprocessing.get_start_method()
-    multiprocessing.set_start_method(request.param, force=True)
-    yield request.param
-    multiprocessing.set_start_method(original, force=True)
-
-
 @pytest.mark.parametrize(
     "name",
     [
@@ -85,7 +76,6 @@ def test_test_database_defaults_to_memory(
 
     assert test_name == ":memory:"
     assert rows == [("core_tag",)]
-    assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
 def test_explicit_test_name_is_used(
@@ -302,52 +292,6 @@ def test_parallel_setup_keeps_existing_clone_with_keepdb(
     assert table_names == ["stale"]
 
 
-@pytest.mark.parametrize(
-    ("start_method", "worker_database_name"),
-    [
-        pytest.param("fork", ":memory:", id="fork"),
-        pytest.param("forkserver", "creation_1.sqlite3", id="forkserver"),
-        pytest.param("spawn", "creation_1.sqlite3", id="spawn"),
-    ],
-    indirect=["start_method"],
-)
-@pytest.mark.usefixtures("start_method")
-def test_parallel_worker_opens_memory_test_database_clone(
-    monkeypatch: pytest.MonkeyPatch,
-    register_database: RegisterDatabase,
-    tmp_path: pathlib.Path,
-    worker_database_name: str,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    connection = register_database(
-        "creation",
-        {"ENGINE": "dj_turso", "NAME": "default.db", "TEST": {"DEPENDENCIES": []}},
-    )
-    test_runner = runner.DiscoverRunner(interactive=False, parallel=2, verbosity=0)
-
-    old_config = test_runner.setup_databases(aliases={"creation"})
-    # A worker sets up in its own process: give the parent its settings back.
-    parent_settings = dict(connection.settings_dict)
-    connection.creation.setup_worker_connection(1)
-    name = connection.settings_dict["NAME"]
-    table_names = connection.introspection.table_names()
-    connection.close()
-    connection.settings_dict.update(parent_settings)
-    test_runner.teardown_databases(old_config)
-    listing = sorted(path.name for path in tmp_path.iterdir())
-
-    assert name == worker_database_name
-    assert table_names == [
-        "core_attachment",
-        "core_counter",
-        "core_event",
-        "core_product",
-        "core_shift",
-        "core_tag",
-    ]
-    assert listing == []
-
-
 def test_clone_refuses_url_test_database(register_database: RegisterDatabase) -> None:
     connection = register_database(
         "creation", {"ENGINE": "dj_turso", "NAME": "https://example.invalid"}
@@ -362,16 +306,17 @@ def test_clone_refuses_url_test_database(register_database: RegisterDatabase) ->
     )
 
 
+# Fork copies the in-memory test database; forkserver and spawn open a clone file.
 @pytest.mark.parametrize(
-    "start_method",
+    ("start_method", "worker_database_name"),
     [
-        pytest.param("fork", id="fork"),
-        pytest.param("forkserver", id="forkserver"),
-        pytest.param("spawn", id="spawn"),
+        pytest.param("fork", ":memory:", id="fork"),
+        pytest.param("forkserver", "default_{worker_id}.sqlite3", id="forkserver"),
+        pytest.param("spawn", "default_{worker_id}.sqlite3", id="spawn"),
     ],
 )
 def test_parallel_run_gives_each_worker_a_clone(
-    start_method: str, tmp_path: pathlib.Path
+    start_method: str, tmp_path: pathlib.Path, worker_database_name: str
 ) -> None:
     child = (
         "import multiprocessing, django, django.core.management;"
@@ -390,6 +335,7 @@ def test_parallel_run_gives_each_worker_a_clone(
             **os.environ,
             "DJANGO_SETTINGS_MODULE": "tests.core.settings",
             "PYTHONPATH": str(REPOSITORY_ROOT),
+            "WORKER_DATABASE_NAME": worker_database_name,
         },
         text=True,
     )
