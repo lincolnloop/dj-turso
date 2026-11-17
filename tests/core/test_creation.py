@@ -3,7 +3,6 @@ import pathlib
 import typing as t
 
 import django.conf
-import django.core.exceptions
 import django.db
 import pytest
 import pytest_django
@@ -43,19 +42,30 @@ def register_database(
             del django.db.connections[alias]
 
 
-def test_test_database_defaults_to_prefixed_file_beside_name(
-    register_database: RegisterDatabase, tmp_path: pathlib.Path
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("default.db", id="file"),
+        pytest.param("https://example.invalid", id="url"),
+    ],
+)
+def test_test_database_defaults_to_memory(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    register_database: RegisterDatabase,
+    tmp_path: pathlib.Path,
 ) -> None:
-    connection = register_database(
-        "creation", {"ENGINE": "dj_turso", "NAME": str(tmp_path / "default.db")}
-    )
+    monkeypatch.chdir(tmp_path)
+    connection = register_database("creation", {"ENGINE": "dj_turso", "NAME": name})
 
     test_name = connection.creation.create_test_db(verbosity=0)
-    created = (tmp_path / "test_default.db").exists()
-    connection.creation.destroy_test_db(str(tmp_path / "default.db"), verbosity=0)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT name FROM sqlite_master WHERE name = 'core_tag'")
+        rows = cursor.fetchall()
+    connection.creation.destroy_test_db(name, verbosity=0)
 
-    assert test_name == str(tmp_path / "test_default.db")
-    assert created is True
+    assert test_name == ":memory:"
+    assert rows == [("core_tag",)]
     assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
@@ -124,7 +134,12 @@ def test_create_replaces_existing_test_database(
     stale.execute("CREATE TABLE stale (name TEXT)")
     stale.close()
     connection = register_database(
-        "creation", {"ENGINE": "dj_turso", "NAME": str(tmp_path / "default.db")}
+        "creation",
+        {
+            "ENGINE": "dj_turso",
+            "NAME": str(tmp_path / "default.db"),
+            "TEST": {"NAME": str(tmp_path / "test_default.db")},
+        },
     )
 
     connection.creation.create_test_db(verbosity=0, autoclobber=True)
@@ -151,23 +166,6 @@ def test_clone_raises_not_supported_error(
     assert str(excinfo.value) == (
         "Turso test databases cannot be cloned: two processes cannot open one "
         "database file. Give each test process its own test database instead."
-    )
-
-
-def test_url_name_without_test_name_is_improperly_configured(
-    register_database: RegisterDatabase,
-) -> None:
-    connection = register_database(
-        "creation", {"ENGINE": "dj_turso", "NAME": "https://example.invalid"}
-    )
-
-    with pytest.raises(django.core.exceptions.ImproperlyConfigured) as excinfo:
-        connection.creation.create_test_db(verbosity=0)
-
-    assert str(excinfo.value) == (
-        "Database 'creation' has a URL NAME, so its TEST NAME must be set: dj-turso "
-        "never creates or destroys remote databases. Use a local file path, or the "
-        "URL of a database the tests own."
     )
 
 
