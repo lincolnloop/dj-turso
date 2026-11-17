@@ -222,3 +222,23 @@ def test_new_stream_repeats_session_setup(
     assert defer_foreign_keys == [(1,)]
     # Setup, the failed query, setup again, then each query once.
     assert proxy.received_request_count == 5
+
+
+def test_connection_closed_by_server_answer_reconnects(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxy.answer_next_requests(
+        b'{"baton": null, "base_url": null, "results": ['
+        b'{"type": "ok", "response": {"type": "execute", "result": {"cols": [], '
+        b'"rows": [], "affected_row_count": 0, "last_insert_rowid": null}}}, '
+        b'{"type": "ok", "response": {"type": "get_autocommit", "is_autocommit": true}}'
+        b"]}"
+    )
+    proxied_target.ensure_connection()
+
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        rows = cursor.fetchall()
+
+    assert rows == [(1,)]
+    assert proxy.accepted_connection_count == 2
