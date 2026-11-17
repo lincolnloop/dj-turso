@@ -30,6 +30,22 @@ DATABASES = {
 }
 ```
 
+## One process per database file
+
+A local database file opens in one process at a time, as
+[Turso documents](https://docs.turso.tech/sql-reference/multiprocess-access). A second
+process that opens the same file fails:
+
+```text
+OperationalError: Locking error: Failed locking file '/srv/app/default.db'. File is locked by another process
+```
+
+Threads within one process share the file freely. So a local file suits development,
+tests and single-process apps, but not a server that runs several worker processes, such
+as gunicorn or uwsgi with more than one worker. Point those at a remote database, on
+sqld or Turso Cloud. A management command run while the server holds the file fails the
+same way.
+
 ## Testing your project
 
 Run your tests in parallel with Django's runner or with
