@@ -7,6 +7,7 @@ import pytest
 import pytest_django
 import turso
 from django.db.backends.base import base
+from django.test import runner
 
 from tests import utils
 from tests.core import models
@@ -148,21 +149,21 @@ def test_create_replaces_existing_test_database(
     assert table_names == ["core_attachment", "core_event", "core_tag"]
 
 
-def test_clone_raises_not_supported_error(
-    register_database: RegisterDatabase, tmp_path: pathlib.Path
-) -> None:
+def test_parallel_setup_refuses_to_clone(register_database: RegisterDatabase) -> None:
     connection = register_database(
-        "creation", {"ENGINE": "dj_turso", "NAME": str(tmp_path / "default.db")}
+        "creation",
+        {"ENGINE": "dj_turso", "NAME": "default.db", "TEST": {"DEPENDENCIES": []}},
     )
-    connection.creation.create_test_db(verbosity=0)
 
-    with pytest.raises(django.db.NotSupportedError) as excinfo:
-        connection.creation.clone_test_db(suffix="1", verbosity=0)
-    connection.creation.destroy_test_db(str(tmp_path / "default.db"), verbosity=0)
+    with pytest.raises(NotImplementedError) as excinfo:
+        runner.DiscoverRunner(
+            interactive=False, parallel=2, verbosity=0
+        ).setup_databases(aliases={"creation"})
+    connection.creation.destroy_test_db("default.db", verbosity=0)
 
     assert str(excinfo.value) == (
-        "Turso test databases cannot be cloned: two processes cannot open one "
-        "database file. Give each test process its own test database instead."
+        "The database backend doesn't support cloning databases. "
+        "Disable the option to run tests in parallel processes."
     )
 
 

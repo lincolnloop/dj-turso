@@ -5,14 +5,6 @@ class TursoBackendError(Exception):
     pass
 
 
-class CloneNotSupportedError(TursoBackendError, django.db.NotSupportedError):
-    def __init__(self) -> None:
-        super().__init__(
-            "Turso test databases cannot be cloned: two processes cannot open one "
-            "database file. Give each test process its own test database instead."
-        )
-
-
 class HashFunctionNotSupportedError(TursoBackendError, django.db.NotSupportedError):
     def __init__(self, function: str) -> None:
         super().__init__(f"Turso has no {function} function to hash with.")

@@ -2,8 +2,6 @@ import pathlib
 
 from django.db.backends.sqlite3 import creation as sqlite_creation
 
-from dj_turso import exceptions
-
 # Files a Turso database keeps beside its main file.
 DATABASE_FILE_SUFFIXES = ("", "-wal", "-shm")
 
@@ -14,8 +12,11 @@ class DatabaseCreation(sqlite_creation.DatabaseCreation):
         test_name: str | None = self.connection.settings_dict["TEST"]["NAME"]
         return test_name or ":memory:"
 
+    # Django's refusal, not sqlite3's clone: that needs backup(), which pyturso lacks.
     def _clone_test_db(self, suffix: str, verbosity: int, keepdb: bool = False) -> None:
-        raise exceptions.CloneNotSupportedError
+        super(sqlite_creation.DatabaseCreation, self)._clone_test_db(  # type: ignore[misc]
+            suffix, verbosity, keepdb
+        )
 
     def _destroy_test_db(self, test_database_name: str, verbosity: int) -> None:
         if not self.is_in_memory_db(test_database_name):
