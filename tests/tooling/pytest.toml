@@ -1,0 +1,15 @@
+[pytest]
+addopts = [
+  "--confcutdir=..",
+  "--cov",
+  "--cov-append",
+  "--cov-report=xml",
+  "--junitxml=junit-tooling.xml",
+  "--strict-markers",
+  "-p",
+  "no:django",
+]
+pythonpath = ["../.."]
+testpaths = ["."]
+timeout = "60"
+xfail_strict = true

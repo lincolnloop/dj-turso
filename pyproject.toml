@@ -115,6 +115,7 @@ addopts = [
   "--ignore=bench",
   "--ignore=reference",
   "--ignore=tests/core",
+  "--ignore=tests/tooling",
   "--strict-markers",
 ]
 

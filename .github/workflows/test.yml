@@ -58,7 +58,7 @@ jobs:
           report_type: test_results
           flags: ${{ matrix.env }}
           fail_ci_if_error: true
-          files: junit-core.xml
+          files: junit-core.xml,junit-tooling.xml
 
   build:
     name: build distribution
