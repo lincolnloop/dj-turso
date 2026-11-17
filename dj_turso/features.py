@@ -7,7 +7,6 @@ MAX_QUERY_PARAMS = 32766
 
 
 class DatabaseFeatures(sqlite_features.DatabaseFeatures):
-    can_clone_databases = False
     max_query_params = MAX_QUERY_PARAMS
     # Turso's REGEXP is Rust's regex crate, which has no backreferences.
     supports_regex_backreferencing = False

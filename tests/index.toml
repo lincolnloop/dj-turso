@@ -79,6 +79,14 @@ tests = [
 
 [[cause]]
 kind = "stdlib-internal"
+name = "stdlib backend loads a worker's clone into memory"
+reason = "Asserts the worker setup of Django's sqlite3 backend, which copies its clone into a shared in-memory database with the stdlib sqlite3 backup(); pyturso has no backup() or shared memory database, so each dj-turso worker opens its clone file"
+tests = [
+  "tests/vendor/django/backends/sqlite/test_creation.py::TestDbSignatureTests::test_setup_worker_connection_respects_test_database_name",
+]
+
+[[cause]]
+kind = "stdlib-internal"
 name = "in-memory test database never closes"
 reason = "Relies on the shared in-memory test database Django's sqlite3 backend uses by default; pyturso shares no memory database between connections, so the vendored run tests on files, and closing the shared connection mid-test breaks every later test in the process"
 tests = [

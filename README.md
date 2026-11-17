@@ -32,17 +32,19 @@ DATABASES = {
 
 ## Testing your project
 
-Run your tests with [pytest-django](https://pytest-django.readthedocs.io) and
+Run your tests in parallel with Django's runner or with
+[pytest-django](https://pytest-django.readthedocs.io) and
 [pytest-xdist](https://pytest-xdist.readthedocs.io). Each worker gets its own test
 database:
+
+```shell
+python manage.py test --parallel
+```
 
 ```shell
 pip install pytest-django pytest-xdist
 pytest -n auto
 ```
-
-Don't use `manage.py test --parallel`: Django refuses it for this backend, because a
-dj-turso test database can't be cloned.
 
 Test databases follow Django's defaults: in memory, unless `TEST["NAME"]` names one.
 Point it at a file:
@@ -64,8 +66,8 @@ creates or destroys it:
 "TEST": {"NAME": "turso://my-test-database.turso.io"},
 ```
 
-Run tests against a remote test database without `-n`: pytest-django gives each worker
-its own test database by renaming it, and a URL can't be renamed.
+Run tests against a remote test database without `-n` or `--parallel`: each worker needs
+its own test database, and a remote one can't be renamed or cloned.
 
 ## Regular expressions
 
