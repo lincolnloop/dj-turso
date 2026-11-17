@@ -10,9 +10,12 @@ import uuid
 
 from django.db.backends.sqlite3 import base as sqlite_base
 
-from dj_turso import drivers
+from dj_turso import drivers, exceptions
 
 RETURNING_REGEX = re.compile(r"\bRETURNING\b", re.IGNORECASE)
+
+# SQLite's INTEGER is signed 64-bit.
+INTEGER_RANGE = range(-(2**63), 2**63)
 
 
 class TursoCursorWrapper:
@@ -106,9 +109,12 @@ def adapt_params(params: t.Any) -> t.Any:
 
 
 # The storage forms Django's sqlite3 backend registers as stdlib adapters, which the
-# drivers lack; they bind only None, numbers, strings and bytes.
+# drivers lack; they bind only None, numbers, strings and bytes. pyturso would bind
+# an integer past 64 bits as a float, where stdlib sqlite3 raises.
 def adapt_value(value: object) -> object:
     match value:
+        case int() if value not in INTEGER_RANGE:
+            raise exceptions.IntegerOverflowError
         case dt.datetime():
             return value.isoformat(" ")
         case dt.date() | dt.time():

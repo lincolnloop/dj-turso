@@ -5,6 +5,12 @@ class TursoBackendError(Exception):
     pass
 
 
+# Stdlib sqlite3's error and message for an integer it cannot bind.
+class IntegerOverflowError(TursoBackendError, OverflowError):
+    def __init__(self) -> None:
+        super().__init__("Python int too large to convert to SQLite INTEGER")
+
+
 class HashFunctionNotSupportedError(TursoBackendError, django.db.NotSupportedError):
     def __init__(self, function: str) -> None:
         super().__init__(f"Turso has no {function} function to hash with.")

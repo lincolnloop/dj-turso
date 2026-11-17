@@ -54,6 +54,8 @@ def test_doubled_percent_collapses_with_params(target: base.DatabaseWrapper) -> 
         ),
         pytest.param("01:02:03", dt.time(1, 2, 3), id="time"),
         pytest.param("1.10", decimal.Decimal("1.10"), id="decimal"),
+        pytest.param(2**63 - 1, 2**63 - 1, id="largest-integer"),
+        pytest.param(-(2**63), -(2**63), id="smallest-integer"),
         pytest.param(b"ab", memoryview(b"ab"), id="memoryview"),
         pytest.param(
             "12345678-1234-5678-1234-567812345678",
@@ -70,6 +72,22 @@ def test_python_value_binds_as_sqlite_storage_form(
         rows = cursor.fetchall()
 
     assert rows == [(stored,)]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(2**63, id="above-64-bits"),
+        pytest.param(-(2**63) - 1, id="below-64-bits"),
+    ],
+)
+def test_integer_beyond_64_bits_raises_overflow_error(
+    target: base.DatabaseWrapper, value: int
+) -> None:
+    with target.cursor() as cursor, pytest.raises(OverflowError) as excinfo:
+        cursor.execute("SELECT %s", [value])
+
+    assert str(excinfo.value) == "Python int too large to convert to SQLite INTEGER"
 
 
 def test_executemany_binds_each_mapping_by_name(
