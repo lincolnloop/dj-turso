@@ -3,7 +3,7 @@ import typing as t
 from django.db.backends.sqlite3 import base as sqlite_base
 from django.utils import asyncio
 
-from dj_turso import cursor, drivers
+from dj_turso import cursor, drivers, features, operations
 
 # Options Django's sqlite3 backend sets for the stdlib module that no Turso
 # driver accepts.
@@ -17,6 +17,8 @@ SQLITE_DIALECT_VERSION = (3, 50, 4)
 class DatabaseWrapper(sqlite_base.DatabaseWrapper):
     display_name = "Turso"
     init_commands: list[str]
+    features_class = features.DatabaseFeatures
+    ops_class = operations.DatabaseOperations
 
     def __init__(self, settings_dict: dict[str, t.Any], alias: str = "default") -> None:
         super().__init__(settings_dict, alias)

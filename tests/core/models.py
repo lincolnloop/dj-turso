@@ -6,3 +6,10 @@ class Attachment(models.Model):
 
     def __str__(self) -> str:
         return f"attachment {self.pk}"
+
+
+class Tag(models.Model):
+    name = models.TextField()
+
+    def __str__(self) -> str:
+        return self.name
