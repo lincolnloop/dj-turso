@@ -100,17 +100,20 @@ class KeepAliveSession(serverless_session.Session):
                     for sql in self.setup_statements
                 ]
             )
+            for result in results:
+                if result["type"] == "error":
+                    error = result["error"]
+                    raise protocol.ServerError(
+                        error["message"],
+                        code=error.get("code"),
+                        extended_code=error.get("extended_code"),
+                    )
+        except RuntimeError:
+            self.close_stream()
+            raise
         finally:
             self.starting_stream = False
         self.last_response_time = time.monotonic()
-        for result in results:
-            if result["type"] == "error":
-                error = result["error"]
-                raise protocol.ServerError(
-                    error["message"],
-                    code=error.get("code"),
-                    extended_code=error.get("extended_code"),
-                )
 
     def close(self) -> None:
         try:

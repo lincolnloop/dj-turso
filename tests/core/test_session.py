@@ -242,6 +242,30 @@ def test_new_stream_repeats_session_setup(
     assert proxy.received_request_count == 5
 
 
+def test_failed_setup_of_new_stream_is_not_used_by_next_query(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.ensure_connection()
+    proxy.fail_next_request()
+
+    with proxied_target.cursor() as cursor:
+        with pytest.raises(django.db.OperationalError):
+            cursor.execute("SELECT 1")
+        proxy.answer_next_requests(
+            b'{"baton": "half-set-up", "base_url": null, "results": ['
+            b'{"type": "error", "error": {"message": "setup failed"}}, '
+            b'{"type": "ok", "response": {"type": "get_autocommit", '
+            b'"is_autocommit": true}}]}'
+        )
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 2")
+        cursor.execute("SELECT 3")
+        rows = cursor.fetchall()
+
+    assert str(excinfo.value) == "setup failed"
+    assert rows == [(3,)]
+
+
 def test_connection_closed_by_server_answer_reconnects(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
