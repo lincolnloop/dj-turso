@@ -16,6 +16,3 @@ class DatabaseFeatures(sqlite_features.DatabaseFeatures):
     # no STORED form.
     supports_stored_generated_columns = False
     supports_virtual_generated_columns = False
-    # The gap index marks known failures of Django's own tests, not these.
-    django_test_expected_failures: set[str] = set()
-    django_test_skips: dict[str, set[str]] = {}

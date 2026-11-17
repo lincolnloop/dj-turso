@@ -34,8 +34,10 @@ The script replaces `django/` entirely. Update the tag and commit above.
 
 ## Gaps
 
-Failing tests go in [`../index.toml`](../index.toml) by node id; `tests/conftest.py`
-marks them. Add a run's new failures as `unclassified` pending, then print the counts:
+Django's sqlite3 `django_test_skips` and `django_test_expected_failures` apply as in
+`runtests.py`. Other failing tests go in [`../index.toml`](../index.toml) by node id;
+`tests/conftest.py` marks them. Add a run's new failures as `unclassified` pending, then
+print the counts:
 
 ```sh
 uv run python -m scripts.sync_index --junit junit-vendor-pyturso.xml --target pyturso

@@ -28,7 +28,8 @@ def pytest_configure(config: pytest.Config) -> None:
     gc.set_threshold(100_000)
     monkeypatch = pytest.MonkeyPatch()
     config.add_cleanup(monkeypatch.undo)
-    # Makes test database creation apply the backend's django_test_skips.
+    # Makes test database creation apply the backend's django_test_skips and
+    # django_test_expected_failures, as runtests.py does.
     monkeypatch.setenv("RUNNING_DJANGOS_TEST_SUITE", "true")
 
 

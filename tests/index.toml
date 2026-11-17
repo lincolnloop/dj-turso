@@ -82,22 +82,7 @@ kind = "stdlib-internal"
 name = "in-memory test database never closes"
 reason = "Relies on the in-memory SQLite test database Django's sqlite3 backend uses by default; Turso test databases are files, and closing the shared connection mid-test breaks every later test in the process"
 tests = [
-  "tests/vendor/django/backends/sqlite/test_creation.py::TestDbSignatureTests::test_get_test_db_clone_settings_not_supported",
   "tests/vendor/django/backends/sqlite/tests.py::ThreadSharing::test_database_sharing_in_threads",
-]
-
-[[cause]]
-kind = "pending"
-name = "skipped by Django on SQLite"
-reason = "Django's sqlite3 features skip these or expect them to fail (15-digit decimal storage, naive table remakes, undeterminable executed query, mixed date and datetime comparison after timedelta arithmetic); dj-turso replaces django_test_skips and django_test_expected_failures with this index and has not settled their kind"
-tests = [
-  "tests/vendor/django/backends/base/test_base.py::ExecuteWrapperTests::test_wrapper_debug",
-  "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_mixed_comparisons1",
-  "tests/vendor/django/model_fields/test_decimalfield.py::DecimalFieldTests::test_fetch_from_db_without_float_rounding",
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_alter_field_default_doesnt_perform_queries",
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_rename_column_renames_deferred_sql_references",
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_unique_and_reverse_m2m",
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_unique_no_unnecessary_fk_drops",
 ]
 
 [[cause]]
