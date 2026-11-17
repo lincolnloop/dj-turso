@@ -21,7 +21,6 @@ def test_check_constraints_raises_integrity_error_for_dangling_foreign_key(
                 f'CREATE TABLE "{table_name}" ("id" integer PRIMARY KEY, '
                 '"parent_id" integer NULL REFERENCES "parent" ("id"))'
             )
-        # Without a primary key, skipped as Django's MySQL backend skips it.
         cursor.execute(
             'CREATE TABLE "ledger" ("parent_id" integer REFERENCES "parent" ("id"))'
         )
@@ -37,5 +36,26 @@ def test_check_constraints_raises_integrity_error_for_dangling_foreign_key(
     assert str(excinfo.value) == (
         "The row in table 'orphan' with primary key '2' has an invalid foreign key: "
         "orphan.parent_id contains a value '99' that does not have a corresponding "
+        "value in parent.id."
+    )
+
+
+def test_check_constraints_names_rowid_of_table_without_primary_key(
+    target: base.DatabaseWrapper,
+) -> None:
+    with target.cursor() as cursor:
+        cursor.execute('CREATE TABLE "parent" ("id" integer PRIMARY KEY)')
+        cursor.execute(
+            'CREATE TABLE "ledger" ("parent_id" integer REFERENCES "parent" ("id"))'
+        )
+    with target.constraint_checks_disabled(), target.cursor() as cursor:
+        cursor.execute('INSERT INTO "ledger" VALUES (99)')
+
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        target.check_constraints()
+
+    assert str(excinfo.value) == (
+        "The row in table 'ledger' with primary key '1' has an invalid foreign key: "
+        "ledger.parent_id contains a value '99' that does not have a corresponding "
         "value in parent.id."
     )

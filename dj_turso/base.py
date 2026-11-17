@@ -68,17 +68,17 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
         self, table_names: collections.abc.Iterable[str] | None = None
     ) -> None:
         # Turso answers PRAGMA foreign_key_check with no rows, so join each
-        # foreign key to its target the way Django's MySQL backend does.
+        # foreign key to its target the way Django's MySQL backend does. Like
+        # the pragma, a table without a primary key reports its rowid.
         quote_name = self.ops.quote_name
         with self.cursor() as cursor:
             if table_names is None:
                 table_names = self.introspection.table_names(cursor)
             for table_name in table_names:
-                primary_key_column_name = self.introspection.get_primary_key_column(
-                    cursor, table_name
+                primary_key_column_name = (
+                    self.introspection.get_primary_key_column(cursor, table_name)
+                    or "rowid"
                 )
-                if not primary_key_column_name:
-                    continue
                 relations = self.introspection.get_relations(cursor, table_name)
                 for column_name, relation in relations.items():
                     referenced_column_name, referenced_table_name = relation[:2]
