@@ -2,7 +2,7 @@ import collections.abc
 import pathlib
 import typing as t
 
-import django.conf
+import django.db
 import django.db.utils
 import pytest
 import pytest_django
@@ -14,11 +14,10 @@ from dj_turso import base
 @pytest.fixture(scope="session")
 def django_db_modify_db_settings(tmp_path_factory: pytest.TempPathFactory) -> None:
     directory = tmp_path_factory.mktemp("databases")
-    django.conf.settings.DATABASES["default"] = {
-        "ENGINE": "dj_turso",
-        "NAME": str(directory / "default.db"),
-        "TEST": {"NAME": str(directory / "test_default.db")},
-    }
+    # In place: a test may have configured the connection already.
+    settings_dict = django.db.connections["default"].settings_dict
+    settings_dict["NAME"] = str(directory / "default.db")
+    settings_dict["TEST"]["NAME"] = str(directory / "test_default.db")
 
 
 @pytest.fixture(params=[pytest.param("pyturso", id="pyturso")])
