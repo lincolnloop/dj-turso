@@ -1,5 +1,7 @@
+import collections.abc
 import typing as t
 
+from django.db import utils as db_utils
 from django.db.backends.sqlite3 import base as sqlite_base
 from django.utils import asyncio
 
@@ -21,6 +23,13 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
     features_class = features.DatabaseFeatures
     introspection_class = introspection.DatabaseIntrospection
     ops_class = operations.DatabaseOperations
+    sql_dangling_foreign_keys = (
+        "SELECT referring.%(primary_key)s, referring.%(column)s "
+        "FROM %(table)s AS referring LEFT JOIN %(referenced_table)s AS referred "
+        "ON referring.%(column)s = referred.%(referenced_column)s "
+        "WHERE referring.%(column)s IS NOT NULL "
+        "AND referred.%(referenced_column)s IS NULL"
+    )
 
     def __init__(self, settings_dict: dict[str, t.Any], alias: str = "default") -> None:
         super().__init__(settings_dict, alias)
@@ -54,6 +63,47 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
             connection, ["PRAGMA foreign_keys = ON", *init_commands]
         )
         return connection
+
+    def check_constraints(
+        self, table_names: collections.abc.Iterable[str] | None = None
+    ) -> None:
+        # Turso answers PRAGMA foreign_key_check with no rows, so join each
+        # foreign key to its target the way Django's MySQL backend does.
+        quote_name = self.ops.quote_name
+        with self.cursor() as cursor:
+            if table_names is None:
+                table_names = self.introspection.table_names(cursor)
+            for table_name in table_names:
+                primary_key_column_name = self.introspection.get_primary_key_column(
+                    cursor, table_name
+                )
+                if not primary_key_column_name:
+                    continue
+                relations = self.introspection.get_relations(cursor, table_name)
+                for column_name, relation in relations.items():
+                    referenced_column_name, referenced_table_name = relation[:2]
+                    cursor.execute(
+                        self.sql_dangling_foreign_keys
+                        % {
+                            "primary_key": quote_name(primary_key_column_name),
+                            "column": quote_name(column_name),
+                            "table": quote_name(table_name),
+                            "referenced_table": quote_name(referenced_table_name),
+                            "referenced_column": quote_name(referenced_column_name),
+                        }
+                    )
+                    bad_row = cursor.fetchone()
+                    if bad_row is not None:
+                        primary_key_value, bad_value = bad_row
+                        message = (
+                            f"The row in table '{table_name}' with primary key "
+                            f"'{primary_key_value}' has an invalid foreign key: "
+                            f"{table_name}.{column_name} contains a value "
+                            f"'{bad_value}' that does not have a corresponding "
+                            f"value in {referenced_table_name}."
+                            f"{referenced_column_name}."
+                        )
+                        raise db_utils.IntegrityError(message)
 
     def is_usable(self) -> bool:
         usable: bool = self.Database.is_usable(self.connection)

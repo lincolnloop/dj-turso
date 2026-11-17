@@ -147,15 +147,6 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "foreign_key_check is a no-op"
-reason = "Turso accepts PRAGMA foreign_key_check but returns no rows, so Django's constraint check never reports a dangling foreign key"
-tests = [
-  "tests/vendor/django/fixtures_regress/tests.py::TestFixtures::test_loaddata_raises_error_when_fixture_has_invalid_foreign_key",
-  "tests/vendor/django/test_utils/test_testcase.py::TestTestCase::test_fixture_teardown_checks_constraints",
-]
-
-[[cause]]
 issue = "TBD"
 kind = "upstream-bug"
 name = "no declared column types on raw cursor results"
