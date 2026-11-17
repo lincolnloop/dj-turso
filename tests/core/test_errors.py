@@ -88,11 +88,12 @@ def test_second_process_on_open_database_raises_operational_error(
     )
     connection = handler["default"]
     child = (
-        "import django.conf, django.db.utils;"
+        "import sys, django.conf, django.db, django.db.utils;"
         "django.conf.settings.configure();"
         "handler = django.db.utils.ConnectionHandler("
         f"{{'default': {{'ENGINE': 'dj_turso', 'NAME': {str(database_path)!r}}}}});"
-        "handler['default'].ensure_connection()"
+        "\ntry: handler['default'].ensure_connection()"
+        "\nexcept django.db.OperationalError as exc: sys.exit(repr(exc))"
     )
 
     with django_db_blocker.unblock():
@@ -110,7 +111,7 @@ def test_second_process_on_open_database_raises_operational_error(
         connection.close()
 
     assert completed.returncode == 1
-    assert completed.stderr.splitlines()[-1] == (
-        "django.db.utils.OperationalError: Locking error: Failed locking file "
-        f"'{database_path}'. File is locked by another process"
+    assert completed.stderr == (
+        'OperationalError("Locking error: Failed locking file '
+        f"'{database_path}'. File is locked by another process\")\n"
     )

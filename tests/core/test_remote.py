@@ -39,11 +39,12 @@ def test_url_name_selects_serverless_driver(name: str) -> None:
 # A real environment without the extra: the package and its required dependencies only.
 def test_url_name_without_serverless_extra_raises_import_error() -> None:
     child = (
-        "import django.conf, django.db.utils;"
+        "import sys, django.conf, django.db.utils;"
         "django.conf.settings.configure();"
         "handler = django.db.utils.ConnectionHandler("
         "{'default': {'ENGINE': 'dj_turso', 'NAME': 'turso://example.invalid'}});"
-        "handler['default']"
+        "\ntry: handler['default']"
+        "\nexcept ImportError as exc: sys.exit(f'{exc!r} from {exc.__cause__!r}')"
     )
 
     uv = shutil.which("uv")
@@ -81,16 +82,11 @@ def test_url_name_without_serverless_extra_raises_import_error() -> None:
     )
 
     assert completed.returncode == 1
-    assert [line for line in completed.stderr.splitlines() if line[:1].isalpha()] == [
-        "Traceback (most recent call last):",
-        "ModuleNotFoundError: No module named 'turso_serverless'",
-        "The above exception was the direct cause of the following exception:",
-        "Traceback (most recent call last):",
-        (
-            "ImportError: A database NAME that is a URL needs the serverless extra: "
-            "install dj-turso[serverless]."
-        ),
-    ]
+    assert completed.stderr == (
+        "ImportError('A database NAME that is a URL needs the serverless extra: "
+        "install dj-turso[serverless].') from ModuleNotFoundError(\"No module named "
+        "'turso_serverless'\", name='turso_serverless')\n"
+    )
 
 
 def test_remote_query_returns_row(remote_target: base.DatabaseWrapper) -> None:
