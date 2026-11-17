@@ -139,7 +139,7 @@ def test_upstream_bug_entry_reports_issue_with_expected_failure(
         [[cause]]
         name = "HAVING subquery wrong rows"
         kind = "upstream-bug"
-        issue = "TBD"
+        issue = "unfiled"
         tests = ["test_sample.py::test_fails"]
         """,
     )
@@ -148,7 +148,7 @@ def test_upstream_bug_entry_reports_issue_with_expected_failure(
 
     report = recorder.matchreport("test_fails", when="call")
     assert report.outcome == "skipped"
-    assert report.wasxfail == "HAVING subquery wrong rows: TBD"
+    assert report.wasxfail == "HAVING subquery wrong rows: unfiled"
 
 
 def test_upstream_bug_entry_fails_run_when_test_passes(
@@ -166,7 +166,7 @@ def test_upstream_bug_entry_fails_run_when_test_passes(
         [[cause]]
         name = "HAVING subquery wrong rows"
         kind = "upstream-bug"
-        issue = "TBD"
+        issue = "unfiled"
         tests = ["test_sample.py::test_passes"]
         """,
     )
@@ -320,6 +320,17 @@ def test_module_entry_marks_every_test_in_module(
         pytest.param(
             """
             [[cause]]
+            name = "having"
+            kind = "upstream-bug"
+            issue = "TBD"
+            tests = ["test_sample.py::test_fails"]
+            """,
+            "cause 'having': upstream-bug issue must be a URL or 'unfiled', not 'TBD'",
+            id="upstream-bug-with-placeholder-issue",
+        ),
+        pytest.param(
+            """
+            [[cause]]
             name = "limits"
             kind = "stdlib-internal"
             tests = ["test_sample.py::test_fails"]
@@ -443,7 +454,7 @@ def test_turso_markers_expand_like_index_kinds(
         def test_unsupported():
             raise django.db.NotSupportedError("UTC only")
 
-        @pytest.mark.turso_upstream_bug("HAVING subquery wrong rows", issue="TBD")
+        @pytest.mark.turso_upstream_bug("HAVING subquery wrong rows", issue="unfiled")
         def test_upstream_bug():
             raise AssertionError
 

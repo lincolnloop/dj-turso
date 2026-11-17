@@ -31,6 +31,21 @@ def test_report_prints_counts_by_kind_and_cause(tmp_path: pathlib.Path) -> None:
         raises = "builtins.AssertionError"
         match = "File is locked by another process"
         tests = ["tests/vendor/django/migrations/test_loader.py::LoaderTests"]
+
+        [[cause]]
+        name = "subquery in HAVING"
+        kind = "upstream-bug"
+        issue = "unfiled"
+        tests = [
+            "tests/vendor/django/aggregation/tests.py::AggregateTestCase",
+            "tests/vendor/django/annotations/tests.py::NonAggregateAnnotationTestCase",
+        ]
+
+        [[cause]]
+        name = "case-only RENAME COLUMN"
+        kind = "upstream-bug"
+        issue = "https://example.com/issues/1"
+        tests = ["tests/vendor/django/schema/tests.py::SchemaTests"]
         """
     )
 
@@ -50,7 +65,9 @@ def test_report_prints_counts_by_kind_and_cause(tmp_path: pathlib.Path) -> None:
         "  1 non-UTC time zone\n"
         "turso-limitation 1\n"
         "  1 one process per database file\n"
-        "upstream-bug 0\n"
+        "upstream-bug 3\n"
+        "  2 subquery in HAVING (unfiled)\n"
+        "  1 case-only RENAME COLUMN (https://example.com/issues/1)\n"
         "stdlib-internal 0\n"
     )
 

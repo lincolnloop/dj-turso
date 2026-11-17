@@ -6,6 +6,8 @@ import pkgutil
 import tomllib
 import typing as t
 
+UNFILED_ISSUE = "unfiled"
+
 KINDS = (
     "pending",
     "unsupported",
@@ -42,6 +44,14 @@ class UnknownKindError(InvalidIndexError):
 class MissingIssueError(InvalidIndexError):
     def __init__(self, cause: str) -> None:
         super().__init__(f"cause {cause!r}: upstream-bug needs an issue")
+
+
+class InvalidIssueError(InvalidIndexError):
+    def __init__(self, cause: str, issue: str) -> None:
+        super().__init__(
+            f"cause {cause!r}: upstream-bug issue must be a URL or "
+            f"{UNFILED_ISSUE!r}, not {issue!r}"
+        )
 
 
 class MissingReasonError(InvalidIndexError):
@@ -82,8 +92,11 @@ class Cause:
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
             raise UnknownKindError(self.name, self.kind)
-        if self.kind == "upstream-bug" and not self.issue:
-            raise MissingIssueError(self.name)
+        if self.kind == "upstream-bug":
+            if not self.issue:
+                raise MissingIssueError(self.name)
+            if self.issue != UNFILED_ISSUE and not self.issue.startswith("https://"):
+                raise InvalidIssueError(self.name, self.issue)
         if self.kind == "stdlib-internal" and not self.reason:
             raise MissingReasonError(self.name)
         if self.kind == "turso-limitation":

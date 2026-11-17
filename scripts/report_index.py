@@ -21,10 +21,11 @@ def main() -> int:
         counts = collections.Counter[str]()
         for cause in causes:
             if cause.kind == kind:
-                counts[cause.name] += len(cause.tests)
+                label = f"{cause.name} ({cause.issue})" if cause.issue else cause.name
+                counts[label] += len(cause.tests)
         sys.stdout.write(f"{kind} {counts.total()}\n")
-        for name, count in sorted(counts.items(), key=lambda pair: -pair[1]):
-            sys.stdout.write(f"  {count} {name}\n")
+        for label, count in sorted(counts.items(), key=lambda pair: -pair[1]):
+            sys.stdout.write(f"  {count} {label}\n")
     return 0
 
 

@@ -1,8 +1,8 @@
 # Known gaps on pyturso, applied by tests/conftest.py. One [[cause]] per reason:
 # name, kind (pending | unsupported | turso-limitation | upstream-bug |
-# stdlib-internal), reason, issue (upstream-bug), raises and match (the exception
-# class and message pattern a turso-limitation test fails with), tests (node ids or
-# class/module prefixes).
+# stdlib-internal), reason, issue (upstream-bug: its URL, or "unfiled"), raises and
+# match (the exception class and message pattern a turso-limitation test fails
+# with), tests (node ids or class/module prefixes).
 
 [[cause]]
 kind = "unsupported"
@@ -96,7 +96,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "subquery in HAVING returns wrong rows"
 reason = "Turso returns the wrong rows, silently, for a subquery inside HAVING"
@@ -106,7 +106,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "compound SELECT in WHERE subquery"
 reason = "Turso rejects UNION/INTERSECT/EXCEPT inside a WHERE subquery"
@@ -117,7 +117,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "mixed-case quoted table in qualified UPDATE"
 reason = "Turso fails to resolve a mixed-case quoted table name referenced as a qualified column in UPDATE"
@@ -129,7 +129,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "PRAGMA foreign_keys=OFF honored inside a transaction"
 reason = "SQLite ignores PRAGMA foreign_keys inside a transaction; Turso applies it, so Django sees constraint checks disabled where it expects them still on"
@@ -140,7 +140,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "case-only RENAME COLUMN"
 reason = "Turso rejects renaming a column to a name differing only in case as a duplicate column"
@@ -149,7 +149,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "TBD"
+issue = "unfiled"
 kind = "upstream-bug"
 name = "no declared column types on raw cursor results"
 reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; pyturso exposes no declared column types, so a raw cursor returns the stored text"
