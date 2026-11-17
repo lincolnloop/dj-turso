@@ -47,6 +47,8 @@ Tag.objects.filter(name__regex=r"b(.).*b\1")  # raises NotSupportedError
   cannot compile matches no rows.
 - `$` matches only at the end of the text, where Python's `re` also matches before a
   final newline. Use `(?m)` for the end of any line.
+- A possessive quantifier such as `a*+` runs, but as a repetition repeated, not a
+  possessive one: `a*+a` matches `aa` on Turso, where Python's `re` matches nothing.
 
 ## Running the tests
 
