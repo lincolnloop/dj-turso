@@ -67,7 +67,9 @@ class KeepAliveSession(serverless_session.Session):
         except (http.client.HTTPException, OSError) as exc:
             self.close_http_connection()
             self._reset_stream()
-            message = f"request to {url} failed: {exc}"
+            # Not the URL: the driver reads constraint words in a message as an
+            # integrity error, and a database URL may hold them.
+            message = f"request to {path} failed: {exc}"
             raise protocol.ProtocolError(message) from exc
         if response.status != http.HTTPStatus.OK:
             self._reset_stream()

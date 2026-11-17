@@ -127,11 +127,13 @@ def test_wrong_auth_token_raises_operational_error_with_cause(
     ]
 
 
-def test_unreachable_host_raises_operational_error(
+# The driver files an error coded by nothing as an integrity error when its message
+# mentions a constraint, and a URL can.
+def test_unreachable_url_naming_a_constraint_raises_operational_error(
     django_db_blocker: pytest_django.DjangoDbBlocker,
 ) -> None:
     handler = django.db.utils.ConnectionHandler(
-        {"default": {"ENGINE": "dj_turso", "NAME": "http://127.0.0.1:1"}}
+        {"default": {"ENGINE": "dj_turso", "NAME": "http://127.0.0.1:1/unique"}}
     )
     connection = handler["default"]
 
@@ -142,7 +144,7 @@ def test_unreachable_host_raises_operational_error(
         connection.ensure_connection()
 
     assert str(excinfo.value) == (
-        "request to http://127.0.0.1:1/v3/cursor failed: "
+        "request to /v3/cursor failed: "
         f"[Errno {errno.ECONNREFUSED}] {os.strerror(errno.ECONNREFUSED)}"
     )
 

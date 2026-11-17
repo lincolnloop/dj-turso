@@ -88,8 +88,7 @@ def test_failed_request_outside_transaction_is_not_resent(
         cursor.execute("SELECT 1")
 
     assert str(excinfo.value) == (
-        f"request to http://127.0.0.1:{proxy.port}/v3/cursor failed: "
-        "Remote end closed connection without response"
+        "request to /v3/cursor failed: Remote end closed connection without response"
     )
     assert proxy.received_request_count == 2
     assert proxied_target.is_usable() is True
