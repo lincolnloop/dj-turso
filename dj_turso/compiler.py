@@ -37,6 +37,10 @@ HASH_FUNCTIONS = (
 )
 
 
+# Turso has no XOR operator. Each operand repeats, with its parameters, so the
+# expression stays inline where CHECK constraints and indexes allow no subquery.
+BITXOR_TEMPLATE = "(({lhs} | {rhs}) - ({lhs} & {rhs}))"
+
 # Turso's STDDEV is the sample deviation; a single value has a population one of 0.
 STDDEV_POP_TEMPLATE = "(COALESCE({stddev}, 0) * SQRT(({count} - 1.0) / {count}))"
 
@@ -56,6 +60,11 @@ class SQLCompiler(compiler.SQLCompiler):
             and not is_regex_compilable(self.using, node.lookup_name, node.rhs)
         ):
             raise exceptions.RegexNotSupportedError(node.rhs)
+        if (
+            isinstance(node, expressions.CombinedExpression)
+            and node.connector == expressions.Combinable.BITXOR
+        ):
+            return compile_bitxor(self, node)
         if isinstance(node, functions.Round) and has_negative_precision(node):
             return compile_round_left_of_point(self, node)
         if isinstance(node, aggregates.Aggregate):
@@ -117,6 +126,14 @@ def compile_round_left_of_point(
         template=ROUND_LEFT_OF_POINT_TEMPLATE.format(factor=factor),
     )
     return sql, tuple(params)
+
+
+def compile_bitxor(
+    compiler: SQLCompiler, node: expressions.CombinedExpression
+) -> SQLParams:
+    return operations.fill_template(
+        BITXOR_TEMPLATE, lhs=compiler.compile(node.lhs), rhs=compiler.compile(node.rhs)
+    )
 
 
 def compile_any_value(compiler: SQLCompiler, node: t.Any) -> SQLParams:

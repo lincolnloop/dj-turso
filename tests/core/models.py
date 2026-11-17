@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import expressions, lookups
 
 
 class Attachment(models.Model):
@@ -34,3 +35,34 @@ class Product(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Counter(models.Model):
+    value = models.IntegerField()
+    mask = models.IntegerField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=lookups.LessThan(
+                    expressions.CombinedExpression(
+                        expressions.F("value"),
+                        expressions.Combinable.BITXOR,
+                        expressions.F("mask"),
+                    ),
+                    8,
+                ),
+                name="counter_xor_below_8",
+            ),
+            models.UniqueConstraint(
+                expressions.CombinedExpression(
+                    expressions.F("value"),
+                    expressions.Combinable.BITXOR,
+                    expressions.F("mask"),
+                ),
+                name="counter_unique_xor",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"counter {self.pk}"

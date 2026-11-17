@@ -84,6 +84,27 @@ def test_bitxor_combines_operands(
 
 
 @pytest.mark.django_db
+def test_bitxor_of_window_operand_reads_each_row() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in "abc")
+
+    values = models.Tag.objects.order_by("name").values_list(
+        expressions.Window(functions.RowNumber(), order_by="name").bitxor(3),
+        flat=True,
+    )
+
+    assert list(values) == [2, 1, 0]
+
+
+@pytest.mark.django_db
+def test_bitxor_of_aggregate_operand() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in "abc")
+
+    result = models.Tag.objects.aggregate(xor=aggregates.Count("pk").bitxor(1))
+
+    assert result == {"xor": 2}
+
+
+@pytest.mark.django_db
 def test_bitand_combines_operands() -> None:
     models.Tag.objects.create(name="one")
 
@@ -310,3 +331,26 @@ def test_any_value_returns_a_group_value() -> None:
     )
 
     assert list(rows) == [("a", "a"), ("b", "b")]
+
+
+@pytest.mark.django_db
+def test_bitxor_check_constraint_rejects_row() -> None:
+    models.Counter.objects.create(value=5, mask=3)
+
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        models.Counter.objects.create(value=12, mask=3)
+
+    assert str(excinfo.value) == "CHECK constraint failed: counter_xor_below_8"
+
+
+@pytest.mark.django_db
+def test_bitxor_unique_index_rejects_duplicate() -> None:
+    models.Counter.objects.create(value=5, mask=3)
+
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        models.Counter.objects.create(value=4, mask=2)
+
+    assert str(excinfo.value) == (
+        "UNIQUE constraint failed: "
+        'core_counter.((("value" | "mask") - ("value" & "mask")))'
+    )
