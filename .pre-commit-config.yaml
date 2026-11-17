@@ -3,7 +3,7 @@
 # to whatever is newest when it is built — CI and a stale local cache then differ.
 # Vendored Django tests stay byte-for-byte upstream; bench/ and reference/ are
 # local scratch. No hook reads or rewrites any of them.
-exclude: ^(tests/vendor|bench|reference)/
+exclude: ^(tests/vendor/django|bench|reference)/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

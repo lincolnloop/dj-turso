@@ -80,7 +80,7 @@ skip_covered = true
 
 [tool.coverage.run]
 branch = true
-omit = ["tests/vendor/*"]
+omit = ["tests/vendor/django/*"]
 # `source_dirs`, not `source`: the XML report strips a `source` prefix from each
 # filename, so same-named files in different dirs would merge into one.
 source_dirs = ["dj_turso", "tests"]
@@ -105,7 +105,7 @@ exclude = [
   "^build/",
   "^dist/",
   "^reference/",
-  "^tests/vendor/",
+  "^tests/vendor/django/",
 ]
 plugins = ["mypy_django_plugin.main"]
 strict = true
@@ -120,7 +120,7 @@ addopts = [
 ]
 
 [tool.ruff]
-extend-exclude = ["bench", "reference", "tests/vendor"]
+extend-exclude = ["bench", "reference", "tests/vendor/django"]
 target-version = "py312"
 
 [tool.ruff.lint]
