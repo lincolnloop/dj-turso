@@ -184,9 +184,10 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "no converters on raw cursor results"
-reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; Turso drivers return the stored text"
+issue = "TBD"
+kind = "upstream-bug"
+name = "no declared column types on raw cursor results"
+reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; pyturso exposes no declared column types, so a raw cursor returns the stored text"
 tests = [
   "tests/vendor/django/schema/tests.py::SchemaTests::test_add_datefield_and_datetimefield_use_effective_default",
   "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_cursor_execute_returns_naive_datetime",
