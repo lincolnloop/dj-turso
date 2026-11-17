@@ -110,14 +110,34 @@ exclude = [
 plugins = ["mypy_django_plugin.main"]
 strict = true
 
+# The root config is the vendored suite's: its node ids stay repo-relative, and
+# tests/vendor/django goes on sys.path the way runtests.py puts Django's tests/ there.
 [tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.vendor.settings"
 addopts = [
+  "--cov",
+  "--cov-report=xml",
   "--ignore=bench",
   "--ignore=reference",
   "--ignore=tests/core",
   "--ignore=tests/tooling",
   "--strict-markers",
 ]
+django_find_project = false
+filterwarnings = [
+  "error::ResourceWarning",
+  "error::RuntimeWarning",
+  "error::django.utils.deprecation.RemovedAfterNextVersionWarning",
+  "error::django.utils.deprecation.RemovedInNextVersionWarning",
+]
+# runtests.py loads only unittest.TestCase subclasses, which pytest collects regardless.
+python_classes = []
+python_files = ["test_*.py", "tests.py"]
+python_functions = []
+pythonpath = [".", "tests/vendor/django"]
+testpaths = ["tests/vendor"]
+timeout = "120"
+xfail_strict = true
 
 [tool.ruff]
 extend-exclude = ["bench", "reference", "tests/vendor/django"]

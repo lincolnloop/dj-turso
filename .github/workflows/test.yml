@@ -26,6 +26,7 @@ jobs:
           - py312-django61
           - py315-django61
           - dev
+          - vendor-sqlite
         # Named for the resolution, not the Python, so a required check survives a
         # Python bump.
         include:
@@ -58,7 +59,9 @@ jobs:
           report_type: test_results
           flags: ${{ matrix.env }}
           fail_ci_if_error: true
-          files: junit-core.xml,junit-tooling.xml
+          files: ${{ startsWith(matrix.env, 'vendor-')
+            && format('junit-{0}.xml', matrix.env)
+            || 'junit-core.xml,junit-tooling.xml' }}
 
   build:
     name: build distribution
