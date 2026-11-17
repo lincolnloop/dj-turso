@@ -24,7 +24,7 @@ class LostTransactionError(
         )
 
 
-# Overrides the private Session._post and reads _base_url, _autocommit and
+# Overrides the private Session._post and reads _base_url, _baton, _autocommit and
 # _reset_stream: tied to the turso-serverless range pinned in pyproject.toml.
 class KeepAliveSession(serverless_session.Session):
     def __init__(self, url: str, auth_token: str | None = None) -> None:
@@ -32,6 +32,8 @@ class KeepAliveSession(serverless_session.Session):
         self.http_connection: http.client.HTTPConnection | None = None
         self.http_connection_origin: tuple[str, str] | None = None
         self.transaction_lost = False
+        self.setup_statements: list[str] = []
+        self.starting_stream = False
 
     # A failed statement that leaves no transaction behind the one it ran in lost
     # it, however the stream ended.
@@ -55,7 +57,32 @@ class KeepAliveSession(serverless_session.Session):
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.transaction_lost:
             raise LostTransactionError
+        if self._baton is None and not self.starting_stream:
+            self.start_stream()
+            body = body | {"baton": self._baton}
         return self.post_on_connection(path, body)
+
+    # Each server stream is a SQL connection of its own, so each one starts with the
+    # session setup Django's connection asked for.
+    def start_stream(self) -> None:
+        self.starting_stream = True
+        try:
+            results = self.execute_pipeline(
+                [
+                    {"type": "execute", "stmt": {"sql": sql, "want_rows": False}}
+                    for sql in self.setup_statements
+                ]
+            )
+        finally:
+            self.starting_stream = False
+        for result in results:
+            if result["type"] == "error":
+                error = result["error"]
+                raise protocol.ServerError(
+                    error["message"],
+                    code=error.get("code"),
+                    extended_code=error.get("extended_code"),
+                )
 
     def close(self) -> None:
         try:
@@ -130,6 +157,16 @@ def connect(
     return KeepAliveConnection(
         KeepAliveSession(database, auth_token=auth_token), isolation_level
     )
+
+
+# Starts the first stream now, as a local connection opens its file on connect. Its
+# failures bypass the driver's error mapping, so they are filed here, as operational.
+def set_up_session(connection: KeepAliveConnection, statements: list[str]) -> None:
+    connection.session.setup_statements = statements
+    try:
+        connection.session.start_stream()
+    except RuntimeError as exc:
+        raise turso_serverless.OperationalError(str(exc)) from exc
 
 
 def is_usable(connection: KeepAliveConnection) -> bool:

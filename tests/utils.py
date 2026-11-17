@@ -58,8 +58,8 @@ class CountingProxy:
         with self.condition:
             self.drop_next_request = True
 
-    # The next requests reach the proxy whole and get these bodies, with status 200,
-    # in place of the server's answers.
+    # The next requests reach the proxy whole and each gets one of these bodies, with
+    # status 200, in place of the server's answer; then its connection closes.
     def answer_next_requests(self, *bodies: bytes) -> None:
         with self.condition:
             self.answer_bodies.extend(bodies)
@@ -98,13 +98,13 @@ class CountingProxy:
                     answer = self.answer_bodies.pop(0) if self.answer_bodies else None
                 if dropping:
                     break
-                if answer is None:
-                    upstream.sendall(request)
-                else:
+                if answer is not None:
                     client.sendall(
-                        b"HTTP/1.1 200 OK\r\n"
+                        b"HTTP/1.1 200 OK\r\nConnection: close\r\n"
                         b"Content-Length: %d\r\n\r\n%s" % (len(answer), answer)
                     )
+                    break
+                upstream.sendall(request)
         self.close_pair(client)
 
     def forward_responses(self, client: socket.socket, upstream: socket.socket) -> None:

@@ -49,10 +49,10 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
         self.Database = drivers.get_database_module(conn_params["database"])
         with drivers.relabel_engine_errors():
             connection = self.Database.connect(**conn_params)
-        connection.execute("PRAGMA foreign_keys = ON")
-        for init_command in self.init_commands:
-            if init_command := init_command.strip():
-                connection.execute(init_command)
+        init_commands = filter(None, map(str.strip, self.init_commands))
+        self.Database.set_up_session(
+            connection, ["PRAGMA foreign_keys = ON", *init_commands]
+        )
         return connection
 
     def is_usable(self) -> bool:

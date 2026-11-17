@@ -11,6 +11,7 @@ import django.db
 import django.db.utils
 import pytest
 import pytest_django
+from turso_serverless import protocol
 
 from dj_turso import base
 from tests import utils
@@ -124,6 +125,7 @@ def test_wrong_auth_token_raises_operational_error_with_cause(
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
         connection.Database.OperationalError,
+        protocol.ProtocolError,
     ]
 
 
@@ -144,7 +146,7 @@ def test_unreachable_url_naming_a_constraint_raises_operational_error(
         connection.ensure_connection()
 
     assert str(excinfo.value) == (
-        "request to /v3/cursor failed: "
+        "request to /v3/pipeline failed: "
         f"[Errno {errno.ECONNREFUSED}] {os.strerror(errno.ECONNREFUSED)}"
     )
 
@@ -170,3 +172,29 @@ def test_error_status_without_json_body_raises_operational_error(
         connection.ensure_connection()
 
     assert str(excinfo.value) == "HTTP status 404"
+
+
+def test_failing_init_command_raises_operational_error(
+    django_db_blocker: pytest_django.DjangoDbBlocker, sqld_url: str
+) -> None:
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": sqld_url,
+                "OPTIONS": {
+                    "auth_token": utils.SQLD_JWT,
+                    "init_command": "SELECT * FROM missing",
+                },
+            }
+        }
+    )
+    connection = handler["default"]
+
+    with (
+        django_db_blocker.unblock(),
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        connection.ensure_connection()
+
+    assert str(excinfo.value) == "SQLite error: no such table: missing"

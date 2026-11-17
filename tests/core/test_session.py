@@ -199,3 +199,26 @@ def test_malformed_state_answer_inside_transaction_loses_transaction(
         protocol.ServerError,
     ]
     assert proxied_target.is_usable() is False
+
+
+def test_new_stream_repeats_session_setup(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.settings_dict["OPTIONS"]["init_command"] = (
+        "PRAGMA defer_foreign_keys = ON"
+    )
+    proxied_target.ensure_connection()
+    proxy.fail_next_request()
+
+    with proxied_target.cursor() as cursor:
+        with pytest.raises(django.db.OperationalError):
+            cursor.execute("SELECT 1")
+        cursor.execute("PRAGMA foreign_keys")
+        foreign_keys = cursor.fetchall()
+        cursor.execute("PRAGMA defer_foreign_keys")
+        defer_foreign_keys = cursor.fetchall()
+
+    assert foreign_keys == [(1,)]
+    assert defer_foreign_keys == [(1,)]
+    # Setup, the failed query, setup again, then each query once.
+    assert proxy.received_request_count == 5

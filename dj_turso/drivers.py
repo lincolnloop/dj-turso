@@ -33,6 +33,7 @@ class DatabaseModule(types.ModuleType):
 
     connect: collections.abc.Callable[..., t.Any]
     is_usable: collections.abc.Callable[[t.Any], bool]
+    set_up_session: collections.abc.Callable[[t.Any, list[str]], None]
     # Stdlib sqlite3's Binary: the drivers have none, and the cursor binds it as bytes.
     Binary = memoryview
     Error: type[Exception]
@@ -50,10 +51,12 @@ class DatabaseModule(types.ModuleType):
         driver: types.ModuleType,
         connect: collections.abc.Callable[..., t.Any],
         is_usable: collections.abc.Callable[[t.Any], bool],
+        set_up_session: collections.abc.Callable[[t.Any, list[str]], None],
     ) -> None:
         super().__init__(driver.__name__)
         self.connect = connect
         self.is_usable = is_usable
+        self.set_up_session = set_up_session
         self.Error = driver.Error
         self.InterfaceError = driver.InterfaceError
         self.DatabaseError = driver.DatabaseError
@@ -73,13 +76,20 @@ def get_database_module(name: str) -> DatabaseModule:
     if is_remote_name(name):
         if serverless_import_error is not None:
             raise ImportError(MISSING_SERVERLESS_EXTRA) from serverless_import_error
-        return DatabaseModule(turso_serverless, session.connect, session.is_usable)
-    return DatabaseModule(turso, turso.connect, is_always_usable)
+        return DatabaseModule(
+            turso_serverless, session.connect, session.is_usable, session.set_up_session
+        )
+    return DatabaseModule(turso, turso.connect, is_always_usable, set_up_local_session)
 
 
 # Local files have no link to lose.
 def is_always_usable(connection: t.Any) -> bool:
     return True
+
+
+def set_up_local_session(connection: t.Any, statements: list[str]) -> None:
+    for statement in statements:
+        connection.execute(statement)
 
 
 # pyturso raises SQLite's generic error code, stdlib sqlite3's OperationalError, as
