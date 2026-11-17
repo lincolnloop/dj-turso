@@ -4,6 +4,7 @@ import contextlib
 import http
 import socket
 import threading
+import time
 
 # Signed by the test-only key whose public half compose.yaml gives the sqld service.
 SQLD_JWT = (
@@ -40,6 +41,7 @@ class CountingProxy:
         self.open_sockets: dict[socket.socket, socket.socket] = {}
         self.drop_next_request = False
         self.answers: list[tuple[http.HTTPStatus, bytes]] = []
+        self.response_delay = 0.0
         threading.Thread(target=self.accept_connections, daemon=True).start()
 
     def wait_for_open_connection_count(self, count: int) -> int:
@@ -66,6 +68,11 @@ class CountingProxy:
     ) -> None:
         with self.condition:
             self.answers.extend((status, body) for body in bodies)
+
+    # The server's next answer waits this long at the proxy before reaching the client.
+    def delay_next_response(self, seconds: float) -> None:
+        with self.condition:
+            self.response_delay = seconds
 
     def close(self) -> None:
         self.listener.close()
@@ -115,6 +122,9 @@ class CountingProxy:
     def forward_responses(self, client: socket.socket, upstream: socket.socket) -> None:
         with contextlib.suppress(OSError):
             for data in iter(lambda: upstream.recv(65536), b""):
+                with self.condition:
+                    delay, self.response_delay = self.response_delay, 0.0
+                time.sleep(delay)
                 client.sendall(data)
         self.close_pair(client)
 

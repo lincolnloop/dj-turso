@@ -3,10 +3,14 @@ import http
 import http.client
 import os
 import resource
+import socket
 import time
+import typing as t
 
 import django.db
+import django.db.utils
 import pytest
+import pytest_django
 from turso_serverless import protocol
 
 from dj_turso import base, session
@@ -335,3 +339,73 @@ def test_error_status_raises_operational_error_with_server_message(
         cursor.execute("SELECT 1")
 
     assert str(excinfo.value) == message
+
+
+# Statements may run as long as they need: only connecting is timed.
+@pytest.mark.timeout(session.CONNECT_TIMEOUT + 10)
+def test_answer_slower_than_connect_timeout_is_awaited(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.ensure_connection()
+    proxy.delay_next_response(session.CONNECT_TIMEOUT + 1)
+
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        rows = cursor.fetchall()
+
+    assert rows == [(1,)]
+    assert proxy.received_request_count == 2
+
+
+@pytest.mark.timeout(session.CONNECT_TIMEOUT + 10)
+def test_answer_slower_than_connect_timeout_is_awaited_after_reconnect(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxy.answer_next_requests(
+        b'{"baton": null, "base_url": null, "results": ['
+        b'{"type": "ok", "response": {"type": "execute", "result": {"cols": [], '
+        b'"rows": [], "affected_row_count": 0, "last_insert_rowid": null}}}, '
+        b'{"type": "ok", "response": {"type": "get_autocommit", "is_autocommit": true}}'
+        b"]}"
+    )
+    proxied_target.ensure_connection()
+
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        proxy.delay_next_response(session.CONNECT_TIMEOUT + 1)
+        cursor.execute("SELECT 2")
+        rows = cursor.fetchall()
+
+    assert rows == [(2,)]
+    assert proxy.accepted_connection_count == 2
+
+
+# A server that accepts the TCP connection but never answers the TLS handshake.
+@pytest.mark.timeout(session.CONNECT_TIMEOUT + 5)
+def test_unanswered_connect_fails_after_connect_timeout(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+) -> None:
+    with socket.create_server(("127.0.0.1", 0)) as listener:
+        port = listener.getsockname()[1]
+        handler = django.db.utils.ConnectionHandler(
+            {"default": {"ENGINE": "dj_turso", "NAME": f"https://127.0.0.1:{port}"}}
+        )
+        connection = t.cast("base.DatabaseWrapper", handler["default"])
+        with (
+            django_db_blocker.unblock(),
+            pytest.raises(django.db.OperationalError) as excinfo,
+        ):
+            connection.ensure_connection()
+
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        connection.Database.OperationalError,
+        protocol.ProtocolError,
+        TimeoutError,
+    ]
+    # The ssl module words the timeout with its own source line, which varies by
+    # Python build.
+    timeout_error: BaseException = excinfo.value
+    while timeout_error.__cause__ is not None:
+        timeout_error = timeout_error.__cause__
+    assert str(excinfo.value) == f"request to /v3/pipeline failed: {timeout_error}"

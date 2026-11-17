@@ -18,6 +18,10 @@ from dj_turso import exceptions
 # and Turso Cloud and sqld both expire streams at it.
 STREAM_IDLE_TIMEOUT = 10
 
+# Seconds to resolve, connect and finish the TLS handshake; reads are untimed, so a
+# long statement is never cut off.
+CONNECT_TIMEOUT = 10
+
 
 class LostTransactionError(
     exceptions.TursoBackendError, turso_serverless.OperationalError
@@ -152,8 +156,12 @@ class KeepAliveSession(serverless_session.Session):
                 if scheme == "https"
                 else http.client.HTTPConnection
             )
-            self.http_connection = connection_class(netloc)
+            self.http_connection = connection_class(netloc, timeout=CONNECT_TIMEOUT)
             self.http_connection_origin = (scheme, netloc)
+        # Connected here, not by http.client on request, so that every new socket,
+        # even after the server closes one, waits on reads with no time limit.
+        if self.http_connection.sock is None:
+            connect_with_untimed_reads(self.http_connection)
         return self.http_connection
 
     def close_http_connection(self) -> None:
@@ -190,6 +198,11 @@ def set_up_session(connection: KeepAliveConnection, statements: list[str]) -> No
 
 def is_usable(connection: KeepAliveConnection) -> bool:
     return not connection.session.transaction_lost
+
+
+def connect_with_untimed_reads(connection: http.client.HTTPConnection) -> None:
+    connection.connect()
+    connection.sock.settimeout(None)
 
 
 def is_closed_by_server(connection: http.client.HTTPConnection) -> bool:
