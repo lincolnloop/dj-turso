@@ -15,9 +15,13 @@ from turso_serverless import session as serverless_session
 
 from dj_turso import exceptions
 
-# Seconds a server stream outlives its last request: Turso's HTTP API docs give it,
-# and Turso Cloud and sqld both expire streams at it.
+# Seconds a server stream outlives its last request, per Turso's HTTP API docs: sqld
+# expires any stream, and Turso Cloud rolls back a transaction, after it.
 STREAM_IDLE_TIMEOUT = 10
+
+# The server's idle clock starts when its answer leaves, the client's when it lands:
+# a stream is given up this many seconds early, for the round trip.
+STREAM_IDLE_MARGIN = 1
 
 # Seconds to resolve, connect and finish the TLS handshake; reads are untimed, so a
 # long statement is never cut off.
@@ -68,11 +72,12 @@ class KeepAliveSession(serverless_session.Session):
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.transaction_lost:
             raise LostTransactionError
-        # Never sent to an expired stream: the server would refuse it, or, on Turso
-        # Cloud, roll its transaction back and answer in autocommit.
+        # Never sent to an expired stream: sqld would refuse it, and Turso Cloud would
+        # answer that it rolled the transaction back.
         if (
             self._baton is not None
-            and time.monotonic() - self.last_response_time > STREAM_IDLE_TIMEOUT
+            and time.monotonic() - self.last_response_time
+            > STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN
         ):
             in_transaction = not self._autocommit
             self._reset_stream()

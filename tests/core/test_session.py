@@ -250,7 +250,7 @@ def test_connection_closed_by_server_answer_reconnects(
     assert proxy.accepted_connection_count == 2
 
 
-# Long enough for both Turso Cloud and sqld to have expired the stream.
+# Past where sqld expires a stream and Turso Cloud rolls back its transaction.
 IDLE_PAST_STREAM_EXPIRY = 12.5
 
 
@@ -267,6 +267,22 @@ def test_query_after_stream_expiry_starts_new_stream_unsent_to_old(
     assert rows == [(2,)]
     # Setup and a query on each stream.
     assert proxy.received_request_count == 4
+
+
+# The server's idle clock starts when an answer leaves it, a second before the
+# delayed answer reaches the client.
+@pytest.mark.timeout(30)
+def test_query_after_stream_expiry_on_slow_link_starts_new_stream(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        proxy.delay_next_response(1)
+        cursor.execute("SELECT 1")
+        time.sleep(session.STREAM_IDLE_TIMEOUT - 0.4)
+        cursor.execute("SELECT 2")
+        rows = cursor.fetchall()
+
+    assert rows == [(2,)]
 
 
 @pytest.mark.timeout(30)
