@@ -1,10 +1,14 @@
+import collections.abc
 import decimal
+import functools
 import math
+import operator
+import statistics
 import uuid
 
 import django.db
 import pytest
-from django.db.models import expressions, fields, functions
+from django.db.models import Q, aggregates, expressions, fields, functions
 
 from tests.core import models
 
@@ -128,3 +132,144 @@ def test_hash_function_is_not_supported(
         list(queryset)
 
     assert str(excinfo.value) == f"Turso has no {name} function to hash with."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("aggregate", "expected"),
+    [
+        pytest.param(
+            aggregates.StdDev(functions.Length("name"), filter=Q(name__startswith="a")),
+            statistics.pstdev([2, 4, 4, 4, 5, 5, 7, 9]),
+            id="stddev-pop",
+        ),
+        pytest.param(
+            aggregates.StdDev(
+                functions.Length("name"), filter=Q(name__startswith="a"), sample=True
+            ),
+            statistics.stdev([2, 4, 4, 4, 5, 5, 7, 9]),
+            id="stddev-sample",
+        ),
+        pytest.param(
+            aggregates.Variance(
+                functions.Length("name"), filter=Q(name__startswith="a")
+            ),
+            statistics.pvariance([2, 4, 4, 4, 5, 5, 7, 9]),
+            id="variance-pop",
+        ),
+        pytest.param(
+            aggregates.Variance(
+                functions.Length("name"), filter=Q(name__startswith="a"), sample=True
+            ),
+            statistics.variance([2, 4, 4, 4, 5, 5, 7, 9]),
+            id="variance-sample",
+        ),
+    ],
+)
+def test_spread_aggregate_matches_statistics(
+    aggregate: aggregates.Aggregate, expected: float
+) -> None:
+    models.Tag.objects.bulk_create(
+        [
+            *(models.Tag(name="a" * length) for length in [2, 4, 4, 4, 5, 5, 7, 9]),
+            models.Tag(name="b" * 30),
+        ]
+    )
+
+    result = models.Tag.objects.aggregate(spread=aggregate)
+
+    assert result == {"spread": pytest.approx(expected)}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("aggregate", "expected"),
+    [
+        pytest.param(aggregates.StdDev("name"), 0.0, id="stddev-pop"),
+        pytest.param(aggregates.StdDev("name", sample=True), None, id="stddev-sample"),
+        pytest.param(aggregates.Variance("name"), 0.0, id="variance-pop"),
+        pytest.param(
+            aggregates.Variance("name", sample=True), None, id="variance-sample"
+        ),
+    ],
+)
+def test_spread_aggregate_of_one_value(
+    aggregate: aggregates.Aggregate, expected: float | None
+) -> None:
+    models.Tag.objects.create(name="3")
+
+    result = models.Tag.objects.aggregate(spread=aggregate)
+
+    assert result == {"spread": expected}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "aggregate",
+    [
+        pytest.param(aggregates.StdDev("name"), id="stddev-pop"),
+        pytest.param(aggregates.StdDev("name", sample=True), id="stddev-sample"),
+        pytest.param(aggregates.Variance("name"), id="variance-pop"),
+        pytest.param(aggregates.Variance("name", sample=True), id="variance-sample"),
+    ],
+)
+def test_spread_aggregate_of_no_rows_is_null(aggregate: aggregates.Aggregate) -> None:
+    result = models.Tag.objects.aggregate(spread=aggregate)
+
+    assert result == {"spread": None}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("aggregate", "operator"),
+    [
+        pytest.param(aggregates.BitAnd, operator.and_, id="bit-and"),
+        pytest.param(aggregates.BitOr, operator.or_, id="bit-or"),
+        pytest.param(aggregates.BitXor, operator.xor, id="bit-xor"),
+    ],
+)
+def test_bit_aggregate_matches_operator(
+    aggregate: type[aggregates.Aggregate],
+    operator: collections.abc.Callable[[int, int], int],
+) -> None:
+    models.Tag.objects.bulk_create(
+        models.Tag(name=prefix * length)
+        for prefix, length in [("a", 3), ("a", 6), ("b", 1), ("a", 13)]
+    )
+
+    result = models.Tag.objects.aggregate(
+        bits=aggregate(functions.Length("name") - 10, filter=Q(name__startswith="a"))
+    )
+
+    assert result == {"bits": functools.reduce(operator, [3 - 10, 6 - 10, 13 - 10])}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "aggregate",
+    [
+        pytest.param(aggregates.BitAnd, id="bit-and"),
+        pytest.param(aggregates.BitOr, id="bit-or"),
+        pytest.param(aggregates.BitXor, id="bit-xor"),
+    ],
+)
+def test_bit_aggregate_of_no_rows_is_null(
+    aggregate: type[aggregates.Aggregate],
+) -> None:
+    result = models.Tag.objects.aggregate(bits=aggregate(functions.Length("name")))
+
+    assert result == {"bits": None}
+
+
+@pytest.mark.django_db
+def test_any_value_returns_a_group_value() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in ["a", "a", "b"])
+
+    rows = (
+        models.Tag.objects.values("name")
+        .annotate(any_name=aggregates.AnyValue("name"))
+        .order_by("name")
+        .values_list("name", "any_name")
+    )
+
+    assert list(rows) == [("a", "a"), ("b", "b")]

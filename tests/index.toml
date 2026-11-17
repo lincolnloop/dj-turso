@@ -33,31 +33,6 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "missing aggregate UDFs"
-reason = "STDDEV_POP, VAR_POP, BIT_AND, BIT_OR, BIT_XOR and ANY_VALUE are Python aggregates in Django's sqlite3 backend; Turso drivers cannot register them"
-tests = [
-  "tests/vendor/django/aggregation/test_filter_argument.py::FilteredAggregateTests::test_filtered_numerical_aggregates",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_expression",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_integer",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_unset",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_default_zero",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value_aggregate_clause",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_any_value_filter",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and_on_only_false_values",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_and_on_only_true_values",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or_on_only_false_values",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_or_on_only_true_values",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor_on_only_false_values",
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_bit_xor_on_only_true_values",
-  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_stddev",
-]
-
-[[cause]]
 kind = "unsupported"
 name = "hash functions"
 reason = "Turso has no MD5 or SHA functions, so dj-turso raises NotSupportedError for MD5, SHA1, SHA224, SHA256, SHA384 and SHA512"

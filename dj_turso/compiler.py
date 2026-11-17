@@ -1,11 +1,14 @@
 """Native SQL for functions Django's sqlite3 backend runs in Python."""
 
+import collections.abc
 import typing as t
 
-from django.db.models import expressions, functions
+from django.db.models import aggregates, expressions, functions
 from django.db.models.sql import compiler
 
-from dj_turso import exceptions
+from dj_turso import exceptions, operations
+
+SQLParams = tuple[str, tuple[t.Any, ...]]
 
 # 53 random bits, as many as a float holds exactly, scaled into [0, 1).
 RANDOM_TEMPLATE = "((RANDOM() & 9007199254740991) / 9007199254740992.0)"
@@ -28,10 +31,23 @@ HASH_FUNCTIONS = (
 )
 
 
+# Turso's STDDEV is the sample deviation; a single value has a population one of 0.
+STDDEV_POP_TEMPLATE = "(COALESCE({stddev}, 0) * SQRT(({count} - 1.0) / {count}))"
+
+# The aggregate of each bit, from the lowest: BIT_XOR keeps the parity of the ones.
+BIT_AGGREGATE_FUNCTIONS = {"BIT_AND": "MIN", "BIT_OR": "MAX", "BIT_XOR": "SUM"}
+BIT_TEMPLATE = "((%(function)s((%(expressions)s >> {bit}) & 1)%(filter)s & 1) << {bit})"
+INTEGER_BITS = 64
+
+
 class SQLCompiler(compiler.SQLCompiler):
     def compile(self, node: t.Any) -> t.Any:
         if isinstance(node, HASH_FUNCTIONS):
             raise exceptions.HashFunctionNotSupportedError(type(node).__name__)
+        if isinstance(node, aggregates.Aggregate):
+            aggregate_compiler = AGGREGATE_COMPILERS.get(node.function)
+            if aggregate_compiler is not None:
+                return aggregate_compiler(self, node)
         for function, template in NATIVE_TEMPLATES.items():
             if isinstance(node, function):
                 # as_sqlite keeps Django's NUMERIC cast of decimal results.
@@ -53,3 +69,67 @@ class SQLUpdateCompiler(SQLCompiler, compiler.SQLUpdateCompiler):
 
 class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
     pass
+
+
+def compile_any_value(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    return compile_call(compiler, node, "MIN")
+
+
+def compile_stddev_samp(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    return compile_call(compiler, node, "STDDEV")
+
+
+def compile_stddev_pop(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    return operations.fill_template(
+        STDDEV_POP_TEMPLATE,
+        count=compile_call(compiler, node, "COUNT"),
+        stddev=compile_call(compiler, node, "STDDEV"),
+    )
+
+
+def compile_var_samp(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    return operations.fill_template(
+        "POWER({stddev}, 2)", stddev=compile_stddev_samp(compiler, node)
+    )
+
+
+def compile_var_pop(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    return operations.fill_template(
+        "POWER({stddev}, 2)", stddev=compile_stddev_pop(compiler, node)
+    )
+
+
+# One aggregate per bit, each compiled on its own to carry its own parameters.
+def compile_bit_aggregate(compiler: SQLCompiler, node: t.Any) -> SQLParams:
+    function = BIT_AGGREGATE_FUNCTIONS[node.function]
+    terms = [
+        node.as_sqlite(
+            compiler,
+            compiler.connection,
+            function=function,
+            template=BIT_TEMPLATE.format(bit=bit),
+        )
+        for bit in range(INTEGER_BITS)
+    ]
+    return "(" + " | ".join(sql for sql, _ in terms) + ")", tuple(
+        param for _, params in terms for param in params
+    )
+
+
+def compile_call(compiler: SQLCompiler, node: t.Any, function: str) -> SQLParams:
+    sql, params = node.as_sqlite(compiler, compiler.connection, function=function)
+    return sql, tuple(params)
+
+
+AGGREGATE_COMPILERS: dict[
+    str | None, collections.abc.Callable[[SQLCompiler, t.Any], SQLParams]
+] = {
+    "ANY_VALUE": compile_any_value,
+    "BIT_AND": compile_bit_aggregate,
+    "BIT_OR": compile_bit_aggregate,
+    "BIT_XOR": compile_bit_aggregate,
+    "STDDEV_POP": compile_stddev_pop,
+    "STDDEV_SAMP": compile_stddev_samp,
+    "VAR_POP": compile_var_pop,
+    "VAR_SAMP": compile_var_samp,
+}
