@@ -9,16 +9,20 @@ import pytest
 from dj_turso import base
 
 
-def test_format_placeholders_bind_positionally(target: base.DatabaseWrapper) -> None:
-    with target.cursor() as cursor:
+def test_format_placeholders_bind_positionally(
+    driver_target: base.DatabaseWrapper,
+) -> None:
+    with driver_target.cursor() as cursor:
         cursor.execute("SELECT %s, %s", [1, "a"])
         rows = cursor.fetchall()
 
     assert rows == [(1, "a")]
 
 
-def test_pyformat_placeholders_bind_by_name(target: base.DatabaseWrapper) -> None:
-    with target.cursor() as cursor:
+def test_pyformat_placeholders_bind_by_name(
+    driver_target: base.DatabaseWrapper,
+) -> None:
+    with driver_target.cursor() as cursor:
         cursor.execute("SELECT %(first)s, %(second)s", {"first": 1, "second": 2})
         rows = cursor.fetchall()
 
@@ -26,17 +30,19 @@ def test_pyformat_placeholders_bind_by_name(target: base.DatabaseWrapper) -> Non
 
 
 def test_percent_literal_untouched_without_params(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("SELECT 'a%s'")
         rows = cursor.fetchall()
 
     assert rows == [("a%s",)]
 
 
-def test_doubled_percent_collapses_with_params(target: base.DatabaseWrapper) -> None:
-    with target.cursor() as cursor:
+def test_doubled_percent_collapses_with_params(
+    driver_target: base.DatabaseWrapper,
+) -> None:
+    with driver_target.cursor() as cursor:
         cursor.execute("SELECT '100%%', %s", [1])
         rows = cursor.fetchall()
 
@@ -65,9 +71,9 @@ def test_doubled_percent_collapses_with_params(target: base.DatabaseWrapper) -> 
     ],
 )
 def test_python_value_binds_as_sqlite_storage_form(
-    stored: object, target: base.DatabaseWrapper, value: t.Any
+    stored: object, driver_target: base.DatabaseWrapper, value: t.Any
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("SELECT %s", [value])
         rows = cursor.fetchall()
 
@@ -82,18 +88,19 @@ def test_python_value_binds_as_sqlite_storage_form(
     ],
 )
 def test_integer_beyond_64_bits_raises_overflow_error(
-    target: base.DatabaseWrapper, value: int
+    driver_target: base.DatabaseWrapper, value: int
 ) -> None:
-    with target.cursor() as cursor, pytest.raises(OverflowError) as excinfo:
+    with driver_target.cursor() as cursor, pytest.raises(OverflowError) as excinfo:
         cursor.execute("SELECT %s", [value])
 
     assert str(excinfo.value) == "Python int too large to convert to SQLite INTEGER"
 
 
+@pytest.mark.usefixtures("item_table")
 def test_executemany_binds_each_mapping_by_name(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (name TEXT, added TEXT)")
         cursor.executemany(
             "INSERT INTO item VALUES (%(name)s, %(added)s)",
@@ -110,10 +117,11 @@ def test_executemany_binds_each_mapping_by_name(
     assert rows == [("a", "2026-11-16"), ("b", "2026-11-17")]
 
 
+@pytest.mark.usefixtures("item_table")
 def test_executemany_binds_each_sequence_by_position(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (name TEXT, price TEXT)")
         cursor.executemany(
             "INSERT INTO item VALUES (%s, %s)",
@@ -127,10 +135,11 @@ def test_executemany_binds_each_sequence_by_position(
     assert rows == [("a", "1.10"), ("b", "2.20")]
 
 
+@pytest.mark.usefixtures("item_table")
 def test_executemany_without_params_changes_nothing(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (name TEXT)")
         cursor.executemany("INSERT INTO item VALUES (%s)", [])
         rowcount = cursor.rowcount
@@ -141,27 +150,37 @@ def test_executemany_without_params_changes_nothing(
     assert rows == []
 
 
+@pytest.mark.usefixtures("item_table")
 def test_insert_returning_constraint_error_raises_on_execute(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT UNIQUE)")
         cursor.execute("INSERT INTO item (name) VALUES ('a')")
         with pytest.raises(django.db.IntegrityError) as excinfo:
             cursor.execute("INSERT INTO item (name) VALUES ('a') RETURNING pk")
 
-    assert str(excinfo.value) == "UNIQUE constraint failed: item.name"
+    # The remote servers prefix the engine's message with their own.
+    assert (
+        str(excinfo.value)
+        == {
+            "cloud": "Tursodb error: UNIQUE constraint failed: item.name",
+            "pyturso": "UNIQUE constraint failed: item.name",
+            "sqld": "SQLite error: UNIQUE constraint failed: item.name",
+        }[driver_target.alias]
+    )
 
 
+@pytest.mark.usefixtures("item_table")
 def test_savepoint_opens_while_returning_cursor_half_read(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT)")
         cursor.execute("BEGIN")
         cursor.execute("INSERT INTO item (name) VALUES ('a'), ('b') RETURNING pk")
         first_row = cursor.fetchone()
-        with target.cursor() as savepoint_cursor:
+        with driver_target.cursor() as savepoint_cursor:
             savepoint_cursor.execute("SAVEPOINT item_savepoint")
             savepoint_cursor.execute("RELEASE item_savepoint")
         rest = cursor.fetchall()
@@ -171,10 +190,11 @@ def test_savepoint_opens_while_returning_cursor_half_read(
     assert rest == [(2,)]
 
 
+@pytest.mark.usefixtures("item_table")
 def test_returning_cursor_keeps_driver_metadata(
-    target: base.DatabaseWrapper,
+    driver_target: base.DatabaseWrapper,
 ) -> None:
-    with target.cursor() as cursor:
+    with driver_target.cursor() as cursor:
         cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT)")
         cursor.execute(
             "INSERT INTO item (name) VALUES ('a'), ('b'), ('c') RETURNING pk, name"
@@ -191,7 +211,7 @@ def test_returning_cursor_keeps_driver_metadata(
         ("name", None, None, None, None, None, None),
     )
     assert rowcount == -1
-    assert lastrowid is None
+    assert lastrowid == {"cloud": 3, "pyturso": None, "sqld": 3}[driver_target.alias]
     assert first_rows == [(1, "a")]
     assert second_rows == [(2, "b")]
     assert rest == [(3, "c")]
