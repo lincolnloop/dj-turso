@@ -156,18 +156,6 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "introspection loses varchar length, collation and index-name case"
-reason = "Turso's table_xinfo and index pragmas drop varchar lengths and column collations and lowercase index names"
-tests = [
-  "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_char_field_db_collation",
-  "tests/vendor/django/inspectdb/tests.py::InspectDBTestCase::test_field_types",
-  "tests/vendor/django/introspection/tests.py::IntrospectionTests::test_get_table_description_col_lengths",
-  "tests/vendor/django/migrations/test_operations.py::OperationTests::test_alter_field_reloads_state_on_transitive_attname_to_field_type_change",
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_remove_constraints_capital_letters",
-]
-
-[[cause]]
 issue = "TBD"
 kind = "upstream-bug"
 name = "no declared column types on raw cursor results"

@@ -163,7 +163,7 @@ def test_create_replaces_existing_test_database(
     table_names = connection.introspection.table_names()
     connection.creation.destroy_test_db(str(tmp_path / "default.db"), verbosity=0)
 
-    assert table_names == ["core_attachment", "core_event", "core_tag"]
+    assert table_names == ["core_attachment", "core_event", "core_product", "core_tag"]
 
 
 def test_parallel_setup_clones_file_test_database(
@@ -218,7 +218,7 @@ def test_parallel_setup_replaces_existing_clone(
     test_runner.teardown_databases(old_config)
     listing = sorted(path.name for path in tmp_path.iterdir())
 
-    assert table_names == ["core_attachment", "core_event", "core_tag"]
+    assert table_names == ["core_attachment", "core_event", "core_product", "core_tag"]
     assert listing == []
     assert capsys.readouterr().err == (
         "Creating test database for alias 'creation'...\n"
@@ -323,7 +323,7 @@ def test_parallel_worker_opens_memory_test_database_clone(
     listing = sorted(path.name for path in tmp_path.iterdir())
 
     assert name == worker_database_name
-    assert table_names == ["core_attachment", "core_event", "core_tag"]
+    assert table_names == ["core_attachment", "core_event", "core_product", "core_tag"]
     assert listing == []
 
 
@@ -437,7 +437,12 @@ def test_url_test_name_is_left_in_place(
             cursor.execute(f'DROP TABLE "{table}"')
 
     assert test_name == sqld_url
-    assert rows == [("core_attachment",), ("core_event",), ("core_tag",)]
+    assert rows == [
+        ("core_attachment",),
+        ("core_event",),
+        ("core_product",),
+        ("core_tag",),
+    ]
 
 
 # ---

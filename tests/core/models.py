@@ -24,3 +24,13 @@ class Event(models.Model):
 
     def __str__(self) -> str:
         return f"event {self.pk}"
+
+
+class Product(models.Model):
+    name = models.CharField(max_length=30)
+
+    class Meta:
+        indexes = [models.Index(fields=["name"], name="ProductNameIndex")]
+
+    def __str__(self) -> str:
+        return self.name
