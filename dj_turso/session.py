@@ -33,7 +33,10 @@ class KeepAliveSession(serverless_session.Session):
         self.http_connection_origin: tuple[str, str] | None = None
         self.transaction_lost = False
 
+    # Like a broken PostgreSQL connection, nothing runs again until Django closes it.
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
+        if self.transaction_lost:
+            raise LostTransactionError
         in_transaction = not self._autocommit
         try:
             return self.post_on_connection(path, body)

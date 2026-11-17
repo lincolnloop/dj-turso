@@ -129,3 +129,25 @@ def test_lost_transaction_connection_is_dropped_when_django_checks_it(
     proxied_target.close_if_unusable_or_obsolete()
 
     assert proxied_target.connection is None
+
+
+def test_lost_transaction_fails_every_later_statement_unsent(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        proxy.fail_next_request()
+        with pytest.raises(django.db.OperationalError):
+            cursor.execute("SELECT 1")
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 2")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+    ]
+    assert proxy.received_request_count == 3
