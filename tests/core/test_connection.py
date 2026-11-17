@@ -2,6 +2,7 @@ import importlib.metadata
 import pathlib
 
 import django.db.utils
+import pytest
 import pytest_django
 
 from dj_turso import base
@@ -78,6 +79,29 @@ def test_options_pass_through_to_driver(
     connection.close()
 
     assert rows == [(1, 2)]
+
+
+def test_auth_token_with_local_name_raises_type_error(
+    django_db_blocker: pytest_django.DjangoDbBlocker, tmp_path: pathlib.Path
+) -> None:
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": str(tmp_path / "default.db"),
+                "OPTIONS": {"auth_token": "remote-only"},
+            }
+        }
+    )
+    connection = handler["default"]
+
+    with django_db_blocker.unblock(), pytest.raises(TypeError) as excinfo:
+        connection.ensure_connection()
+
+    assert (
+        str(excinfo.value)
+        == "connect() got an unexpected keyword argument 'auth_token'"
+    )
 
 
 def test_init_command_runs_after_connection_setup(

@@ -177,6 +177,7 @@ def test_url_name_tests_on_local_test_name(
         {
             "ENGINE": "dj_turso",
             "NAME": "https://example.invalid",
+            "OPTIONS": {"auth_token": "remote-only"},
             "TEST": {"NAME": str(tmp_path / "test_remote.db")},
         },
     )

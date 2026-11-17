@@ -25,12 +25,20 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
     def __init__(self, settings_dict: dict[str, t.Any], alias: str = "default") -> None:
         super().__init__(settings_dict, alias)
         self.Database = drivers.get_database_module(str(settings_dict["NAME"]))
+        # Test database setup swaps NAME in place; keep what was configured.
+        self.configured_name_is_remote = drivers.is_remote_name(
+            str(settings_dict["NAME"])
+        )
 
     def get_connection_params(self) -> dict[str, t.Any]:
         kwargs = super().get_connection_params()
         for name in STDLIB_CONNECT_KWARGS:
             del kwargs[name]
-        return kwargs | {"database": str(kwargs["database"]), "isolation_level": None}
+        database = str(kwargs["database"])
+        # A remote database's token has no use on its local test database.
+        if self.configured_name_is_remote and not drivers.is_remote_name(database):
+            kwargs.pop("auth_token", None)
+        return kwargs | {"database": database, "isolation_level": None}
 
     def get_database_version(self) -> tuple[int, ...]:
         return SQLITE_DIALECT_VERSION
