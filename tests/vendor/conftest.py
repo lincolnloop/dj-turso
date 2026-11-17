@@ -48,8 +48,8 @@ def pytest_collection(session: pytest.Session) -> collections.abc.Generator[None
         base.BaseDatabaseWrapper.close(connection)
 
 
-# Turso test databases are files, and two processes cannot open one: each xdist
-# worker gets its own directory. In place: collection already configured them.
+# pyturso shares no memory database between connections, so each xdist worker gets
+# its own test database files. In place: collection already configured them.
 @pytest.fixture(scope="session")
 def django_db_modify_db_settings(tmp_path_factory: pytest.TempPathFactory) -> None:
     if os.environ.get("DJ_TURSO_TARGET", "pyturso") == "sqlite":

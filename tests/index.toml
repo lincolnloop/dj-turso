@@ -80,7 +80,7 @@ tests = [
 [[cause]]
 kind = "stdlib-internal"
 name = "in-memory test database never closes"
-reason = "Relies on the in-memory SQLite test database Django's sqlite3 backend uses by default; Turso test databases are files, and closing the shared connection mid-test breaks every later test in the process"
+reason = "Relies on the shared in-memory test database Django's sqlite3 backend uses by default; pyturso shares no memory database between connections, so the vendored run tests on files, and closing the shared connection mid-test breaks every later test in the process"
 tests = [
   "tests/vendor/django/backends/sqlite/tests.py::ThreadSharing::test_database_sharing_in_threads",
 ]
