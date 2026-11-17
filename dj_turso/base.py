@@ -1,0 +1,44 @@
+import typing as t
+
+from django.db.backends.sqlite3 import base as sqlite_base
+from django.utils import asyncio
+
+from dj_turso import drivers
+
+# Options Django's sqlite3 backend sets for the stdlib module that no Turso
+# driver accepts.
+STDLIB_CONNECT_KWARGS = ("check_same_thread", "detect_types", "uri")
+
+# The SQLite release Turso's dialect tracks. Constant, not the driver's report:
+# remote drivers report none, and Turso lags SQLite where a version would claim.
+SQLITE_DIALECT_VERSION = (3, 50, 4)
+
+
+class DatabaseWrapper(sqlite_base.DatabaseWrapper):
+    display_name = "Turso"
+    init_commands: list[str]
+
+    def __init__(self, settings_dict: dict[str, t.Any], alias: str = "default") -> None:
+        super().__init__(settings_dict, alias)
+        self.Database = drivers.get_database_module(str(settings_dict["NAME"]))
+
+    def get_connection_params(self) -> dict[str, t.Any]:
+        kwargs = super().get_connection_params()
+        for name in STDLIB_CONNECT_KWARGS:
+            del kwargs[name]
+        return kwargs | {"database": str(kwargs["database"]), "isolation_level": None}
+
+    def get_database_version(self) -> tuple[int, ...]:
+        return SQLITE_DIALECT_VERSION
+
+    @asyncio.async_unsafe
+    def get_new_connection(self, conn_params: dict[str, t.Any]) -> t.Any:
+        connection = self.Database.connect(**conn_params)
+        connection.execute("PRAGMA foreign_keys = ON")
+        for init_command in self.init_commands:
+            if init_command := init_command.strip():
+                connection.execute(init_command)
+        return connection
+
+    def create_cursor(self, name: str | None = None) -> t.Any:
+        return self.connection.cursor()
