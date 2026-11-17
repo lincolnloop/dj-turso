@@ -30,6 +30,43 @@ DATABASES = {
 }
 ```
 
+## Testing your project
+
+Run your tests with [pytest-django](https://pytest-django.readthedocs.io) and
+[pytest-xdist](https://pytest-xdist.readthedocs.io). Each worker gets its own test
+database:
+
+```shell
+pip install pytest-django pytest-xdist
+pytest -n auto
+```
+
+Don't use `manage.py test --parallel`: Django refuses it for this backend, because a
+dj-turso test database can't be cloned.
+
+Test databases follow Django's defaults: in memory, unless `TEST["NAME"]` names one.
+Point it at a file:
+
+```python
+DATABASES = {
+    "default": {
+        "ENGINE": "dj_turso",
+        "NAME": "default.db",
+        "TEST": {"NAME": "test_default.db"},
+    },
+}
+```
+
+Or at a remote database, on sqld or Turso Cloud. dj-turso migrates it in place and never
+creates or destroys it:
+
+```python
+"TEST": {"NAME": "turso://my-test-database.turso.io"},
+```
+
+Run tests against a remote test database without `-n`: pytest-django gives each worker
+its own test database by renaming it, and a URL can't be renamed.
+
 ## Regular expressions
 
 `regex` and `iregex` lookups run on Turso's `REGEXP`, which follows the syntax of
