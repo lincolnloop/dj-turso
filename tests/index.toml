@@ -58,21 +58,10 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "missing scalar UDFs"
-reason = "COT, RAND, BITXOR, MD5, SHA* and UUIDV4/UUIDV7 are Python functions in Django's sqlite3 backend; Turso drivers cannot register them"
+kind = "unsupported"
+name = "hash functions"
+reason = "Turso has no MD5 or SHA functions, so dj-turso raises NotSupportedError for MD5, SHA1, SHA224, SHA256, SHA384 and SHA512"
 tests = [
-  "tests/vendor/django/aggregation/tests.py::AggregateTestCase::test_aggregation_random_ordering",
-  "tests/vendor/django/aggregation_regress/tests.py::AggregationTests::test_count_preserve_group_by",
-  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_decimal",
-  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_float",
-  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_integer",
-  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_null",
-  "tests/vendor/django/db_functions/math/test_cot.py::CotTests::test_transform",
-  "tests/vendor/django/db_functions/math/test_random.py::RandomTests::test",
-  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid4",
-  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid4_lookup",
-  "tests/vendor/django/db_functions/test_uuid.py::TestUUID::test_uuid7",
   "tests/vendor/django/db_functions/text/test_md5.py::MD5Tests::test_basic",
   "tests/vendor/django/db_functions/text/test_md5.py::MD5Tests::test_transform",
   "tests/vendor/django/db_functions/text/test_sha1.py::SHA1Tests::test_basic",
@@ -85,9 +74,6 @@ tests = [
   "tests/vendor/django/db_functions/text/test_sha384.py::SHA384Tests::test_transform",
   "tests/vendor/django/db_functions/text/test_sha512.py::SHA512Tests::test_basic",
   "tests/vendor/django/db_functions/text/test_sha512.py::SHA512Tests::test_transform",
-  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor",
-  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor_null",
-  "tests/vendor/django/expressions/tests.py::ExpressionOperatorTests::test_lefthand_bitwise_xor_right_null",
 ]
 
 [[cause]]

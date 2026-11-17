@@ -13,6 +13,11 @@ class CloneNotSupportedError(TursoBackendError, django.db.NotSupportedError):
         )
 
 
+class HashFunctionNotSupportedError(TursoBackendError, django.db.NotSupportedError):
+    def __init__(self, function: str) -> None:
+        super().__init__(f"Turso has no {function} function to hash with.")
+
+
 class TimeZoneConversionNotSupportedError(
     TursoBackendError, django.db.NotSupportedError
 ):

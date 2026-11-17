@@ -10,6 +10,8 @@ class DatabaseFeatures(sqlite_features.DatabaseFeatures):
     can_clone_databases = False
     max_query_params = MAX_QUERY_PARAMS
     supports_aggregate_order_by_clause = False
+    # Built into Turso, where Django's sqlite3 backend needs Python 3.14's uuid7().
+    supports_uuid7_function = True
     # Generated columns need an experimental flag, off by default, and Turso has
     # no STORED form.
     supports_stored_generated_columns = False

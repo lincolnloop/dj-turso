@@ -96,6 +96,10 @@ FROM_EPOCH_MICROSECONDS = (
     f"ELSE DATE({SECONDS}, 'unixepoch') END"
 )
 
+BITXOR_TEMPLATE = (
+    "SELECT (lhs | rhs) - (lhs & rhs) FROM (SELECT {lhs} AS lhs, {rhs} AS rhs)"
+)
+
 DATE_ARITHMETIC_TEMPLATE = (
     "SELECT {result} FROM ("
     "SELECT {temporal} AS temporal, {epoch} {connector} {duration} AS total "
@@ -110,6 +114,7 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
     # Django's sqlite3 backend gates this on the stdlib's SQLite; Turso's dialect is
     # past the 3.39 fix it checks for.
     force_group_by = base_operations.BaseDatabaseOperations.force_group_by
+    compiler_module = "dj_turso.compiler"
 
     def date_extract_sql(
         self, lookup_type: str, sql: str, params: t.Sequence[t.Any]
@@ -175,6 +180,13 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
     # Only the duration side of a mixed temporal expression comes through here.
     def format_for_duration_arithmetic(self, sql: str) -> str:
         return DURATION_MARKER + sql
+
+    # Turso has no XOR operator; a derived table names the operands to reuse them.
+    def combine_expression(self, connector: str, sub_expressions: list[str]) -> str:
+        if connector == "#":
+            lhs, rhs = sub_expressions
+            return BITXOR_TEMPLATE.format(lhs=lhs, rhs=rhs)
+        return super().combine_expression(connector, sub_expressions)
 
     # Each operand's SQL may carry parameters bound in order, so each appears once,
     # in order: for date arithmetic, a derived table names them to reuse them.
