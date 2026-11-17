@@ -32,6 +32,7 @@ class DatabaseModule(types.ModuleType):
     """What Django's backend reads off its ``Database`` module, for one driver."""
 
     connect: collections.abc.Callable[..., t.Any]
+    is_usable: collections.abc.Callable[[t.Any], bool]
     # Stdlib sqlite3's Binary: the drivers have none, and the cursor binds it as bytes.
     Binary = memoryview
     Error: type[Exception]
@@ -48,9 +49,11 @@ class DatabaseModule(types.ModuleType):
         self,
         driver: types.ModuleType,
         connect: collections.abc.Callable[..., t.Any],
+        is_usable: collections.abc.Callable[[t.Any], bool],
     ) -> None:
         super().__init__(driver.__name__)
         self.connect = connect
+        self.is_usable = is_usable
         self.Error = driver.Error
         self.InterfaceError = driver.InterfaceError
         self.DatabaseError = driver.DatabaseError
@@ -66,8 +69,13 @@ def get_database_module(name: str) -> DatabaseModule:
     if urllib.parse.urlsplit(name).scheme in REMOTE_SCHEMES:
         if serverless_import_error is not None:
             raise ImportError(MISSING_SERVERLESS_EXTRA) from serverless_import_error
-        return DatabaseModule(turso_serverless, session.connect)
-    return DatabaseModule(turso, turso.connect)
+        return DatabaseModule(turso_serverless, session.connect, session.is_usable)
+    return DatabaseModule(turso, turso.connect, is_always_usable)
+
+
+# Local files have no link to lose.
+def is_always_usable(connection: t.Any) -> bool:
+    return True
 
 
 # pyturso raises SQLite's generic error code, stdlib sqlite3's OperationalError, as

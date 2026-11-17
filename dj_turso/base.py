@@ -45,5 +45,9 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
                 connection.execute(init_command)
         return connection
 
+    def is_usable(self) -> bool:
+        usable: bool = self.Database.is_usable(self.connection)
+        return usable
+
     def create_cursor(self, name: str | None = None) -> t.Any:
         return cursor.TursoCursorWrapper(self.connection.cursor())
