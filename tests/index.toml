@@ -20,19 +20,6 @@ tests = [
 ]
 
 [[cause]]
-kind = "pending"
-name = "asserts Django's function names in SQL"
-reason = "Counts 'extract' in the query text, where Django's sqlite3 backend names its django_*_extract UDFs; dj-turso's native SQL has no such name. The behavior asserted before it passes"
-tests = [
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_exact_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_greaterthan_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_lessthan_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_exact_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_greaterthan_lookup",
-  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_lessthan_lookup",
-]
-
-[[cause]]
 kind = "unsupported"
 name = "hash functions"
 reason = "Turso has no MD5 or SHA functions, so dj-turso raises NotSupportedError for MD5, SHA1, SHA224, SHA256, SHA384 and SHA512"
@@ -59,6 +46,19 @@ tests = [
   "tests/vendor/django/backends/sqlite/test_features.py::FeaturesTests::test_max_query_params_respects_variable_limit",
   "tests/vendor/django/backends/sqlite/test_operations.py::SQLiteOperationsTests::test_bulk_batch_size_respects_variable_limit",
   "tests/vendor/django/backends/sqlite/tests.py::LastExecutedQueryTest::test_parameter_count_exceeds_variable_or_column_limit",
+]
+
+[[cause]]
+kind = "stdlib-internal"
+name = "stdlib backend extract function names"
+reason = "Counts 'extract' in the query text, where Django's sqlite3 backend calls the django_*_extract functions it registers through the stdlib sqlite3 create_function(); Turso drivers cannot register functions and have no EXTRACT, so dj-turso extracts with strftime()"
+tests = [
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionTests::test_extract_year_lessthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_exact_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_greaterthan_lookup",
+  "tests/vendor/django/db_functions/datetime/test_extract_trunc.py::DateFunctionWithTimeZoneTests::test_extract_year_lessthan_lookup",
 ]
 
 [[cause]]
