@@ -123,6 +123,48 @@ Tag.objects.filter(name__regex=r"b(.).*b\1")  # raises NotSupportedError
 - A possessive quantifier such as `a*+` runs, but as a repetition repeated, not a
   possessive one: `a*+a` matches `aa` on Turso, where Python's `re` matches nothing.
 
+## Unsupported features
+
+Each of these raises `NotSupportedError`, where Django's sqlite3 backend would run the
+query:
+
+- `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384` and `SHA512`: Turso has no hash functions.
+- Converting a datetime to another time zone. With `USE_TZ`, Turso's date functions work
+  only in the database's time zone, UTC unless the database's `TIME_ZONE` says
+  otherwise. While another time zone is active, a datetime's `__date`, `__hour` and
+  similar lookups, `Extract`, `Trunc` and `datetimes()` raise, as does a `tzinfo`
+  argument naming another zone:
+
+  ```python
+  Event.objects.filter(start__hour=9)  # works in UTC
+  with timezone.override("America/Chicago"):
+      Event.objects.filter(start__hour=9)  # raises NotSupportedError
+  ```
+
+- An `order_by` on an aggregate, such as
+  `StringAgg("name", Value(","), order_by="name")`: Turso takes no `ORDER BY` inside an
+  aggregate.
+- A regular expression Turso cannot compile: see
+  [Regular expressions](#regular-expressions).
+
+`GeneratedField` fails Django's system checks: Turso's generated columns are
+experimental and off by default.
+
+## Known Turso bugs
+
+dj-turso does not work around these yet:
+
+- A subquery inside `HAVING` returns the wrong rows, silently.
+- `union()`, `intersection()` or `difference()` inside a `WHERE` subquery is rejected.
+- An `UPDATE` that refers to a mixed-case quoted table name by a qualified column is
+  rejected.
+- `PRAGMA foreign_keys = OFF` applies inside a transaction, where SQLite ignores it, so
+  constraint checks can be off where Django expects them on.
+- Renaming a column to a name that differs only in case is rejected as a duplicate
+  column.
+- A raw cursor returns date and time columns as the stored text, since pyturso reports
+  no declared column types for Django to convert by.
+
 ## Running the tests
 
 The remote transport tests need a local server:
