@@ -96,14 +96,6 @@ tests = [
 ]
 
 [[cause]]
-kind = "unsupported"
-name = "regexp backreference"
-reason = "Turso's regexp() follows Rust's regex crate, which has no backreferences, so dj-turso raises NotSupportedError"
-tests = [
-  "tests/vendor/django/lookup/tests.py::LookupTests::test_regex_backreferencing",
-]
-
-[[cause]]
 issue = "TBD"
 kind = "upstream-bug"
 name = "compound SELECT in WHERE subquery"

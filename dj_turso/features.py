@@ -9,6 +9,8 @@ MAX_QUERY_PARAMS = 32766
 class DatabaseFeatures(sqlite_features.DatabaseFeatures):
     can_clone_databases = False
     max_query_params = MAX_QUERY_PARAMS
+    # Turso's REGEXP is Rust's regex crate, which has no backreferences.
+    supports_regex_backreferencing = False
     supports_aggregate_order_by_clause = False
     # Built into Turso, where Django's sqlite3 backend needs Python 3.14's uuid7().
     supports_uuid7_function = True
