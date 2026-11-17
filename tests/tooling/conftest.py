@@ -13,6 +13,8 @@ def index_pytester(
         from tests.conftest import (
             pytest_collection_modifyitems,
             pytest_configure,
+            pytest_runtest_call,
+            pytest_runtest_makereport,
             pytest_xdist_node_collection_finished,
         )
         """

@@ -15,6 +15,10 @@ MARKER_KINDS = {f"turso_{kind.replace('-', '_')}": kind for kind in gap_index.KI
 
 causes_key = pytest.StashKey[list[gap_index.Cause]]()
 
+running_call_key = pytest.StashKey[bool]()
+
+failed_subtests_key = pytest.StashKey[int]()
+
 
 class WorkerController(t.Protocol):
     config: pytest.Config
@@ -76,6 +80,41 @@ def pytest_xdist_node_collection_finished(
 ) -> None:
     with raise_usage_error():
         check_stale_entries(node.config, ids, node.config.stash[causes_key])
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> collections.abc.Generator[None]:
+    item.stash[running_call_key] = True
+    try:
+        return (yield)
+    finally:
+        item.stash[running_call_key] = False
+
+
+# An expected failure covers the whole test. A subtest's report, made while the test
+# runs, would otherwise count each passing subtest as a strict unexpected pass.
+@pytest.hookimpl(wrapper=True, trylast=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> collections.abc.Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    xfail = item.get_closest_marker("xfail")
+    if xfail is None or call.when != "call":
+        return report
+    if item.stash.get(running_call_key, False):
+        if call.excinfo is None:
+            report.outcome = "skipped"
+            report.longrepr = (
+                item.location[0],
+                item.location[1] or 0,
+                "Skipped: passes within a test expected to fail",
+            )
+        else:
+            item.stash[failed_subtests_key] = item.stash.get(failed_subtests_key, 0) + 1
+    elif call.excinfo is None and item.stash.get(failed_subtests_key, 0):
+        report.outcome = "skipped"
+        report.wasxfail = xfail.kwargs["reason"]
+    return report
 
 
 def get_mark(cause: gap_index.Cause) -> pytest.MarkDecorator:

@@ -651,3 +651,99 @@ def test_invalid_index_stops_run_before_starting_workers(
 
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     assert result.stderr.lines == ["ERROR: cause 'dates': unknown kind 'pendng'", ""]
+
+
+def test_pending_entry_marks_test_with_failing_subtest_expected_failure(
+    index_pytester: pytest.Pytester,
+) -> None:
+    index_pytester.makepyfile(
+        test_sample="""
+        import unittest
+
+        class FunctionTests(unittest.TestCase):
+            def test_functions(self):
+                for name in ["supported", "missing"]:
+                    with self.subTest(name=name):
+                        self.assertEqual(name, "supported")
+        """
+    )
+    index_pytester.makefile(
+        ".toml",
+        index="""
+        [[cause]]
+        name = "missing scalar UDFs"
+        kind = "pending"
+        targets = ["pyturso"]
+        tests = ["test_sample.py::FunctionTests::test_functions"]
+        """,
+    )
+
+    result = index_pytester.runpytest("-p", "no:django")
+
+    assert result.ret == pytest.ExitCode.OK
+    assert result.parseoutcomes() == {"xfailed": 1}
+
+
+def test_pending_entry_fails_run_when_every_subtest_passes(
+    index_pytester: pytest.Pytester,
+) -> None:
+    index_pytester.makepyfile(
+        test_sample="""
+        import unittest
+
+        class FunctionTests(unittest.TestCase):
+            def test_functions(self):
+                for name in ["supported", "also supported"]:
+                    with self.subTest(name=name):
+                        self.assertIn("supported", name)
+        """
+    )
+    index_pytester.makefile(
+        ".toml",
+        index="""
+        [[cause]]
+        name = "missing scalar UDFs"
+        kind = "pending"
+        targets = ["pyturso"]
+        tests = ["test_sample.py::FunctionTests::test_functions"]
+        """,
+    )
+
+    result = index_pytester.runpytest("-p", "no:django")
+
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    assert result.parseoutcomes() == {"failed": 1}
+
+
+def test_unsupported_entry_fails_run_when_subtest_fails_otherwise(
+    index_pytester: pytest.Pytester,
+) -> None:
+    index_pytester.makepyfile(
+        test_sample="""
+        import unittest
+
+        import django.db
+
+        class FunctionTests(unittest.TestCase):
+            def test_functions(self):
+                for error in [django.db.NotSupportedError, ValueError]:
+                    with self.subTest(error=error):
+                        raise error("no")
+        """
+    )
+    index_pytester.makefile(
+        ".toml",
+        index="""
+        [[cause]]
+        name = "no tz"
+        kind = "unsupported"
+        targets = ["pyturso"]
+        reason = "UTC only"
+        tests = ["test_sample.py::FunctionTests::test_functions"]
+        """,
+    )
+
+    result = index_pytester.runpytest("-p", "no:django")
+
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    assert result.parseoutcomes() == {"failed": 1, "xfailed": 1}
