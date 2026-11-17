@@ -265,8 +265,8 @@ def test_query_after_stream_expiry_starts_new_stream_unsent_to_old(
         rows = cursor.fetchall()
 
     assert rows == [(2,)]
-    # Setup and a query on each stream.
-    assert proxy.received_request_count == 4
+    # Setup and a query on each stream, and the old one's close between them.
+    assert proxy.received_request_count == 5
 
 
 # The server's idle clock starts when an answer leaves it, a second before the
@@ -330,7 +330,8 @@ def test_stream_expiry_inside_transaction_loses_transaction_unsent(
         django.db.OperationalError,
         session.LostTransactionError,
     ]
-    assert proxy.received_request_count == 2
+    # Setup, BEGIN, then the old stream's close.
+    assert proxy.received_request_count == 3
     assert proxied_target.is_usable() is False
 
 

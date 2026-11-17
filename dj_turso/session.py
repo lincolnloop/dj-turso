@@ -80,7 +80,7 @@ class KeepAliveSession(serverless_session.Session):
             > STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN
         ):
             in_transaction = not self._autocommit
-            self._reset_stream()
+            self.close_stream()
             if in_transaction:
                 self.transaction_lost = True
                 raise LostTransactionError
