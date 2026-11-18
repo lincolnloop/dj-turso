@@ -236,9 +236,7 @@ class TunnelProxy:
 
     def tunnel(self, client: socket.socket) -> None:
         request, rest = read_http_request(client, b"")
-        if request is None:
-            client.close()
-            return
+        assert request is not None
         host, _, port = request.split(b" ", 2)[1].decode().rpartition(":")
         upstream = socket.create_connection((host, int(port)))
         with self.lock:
@@ -503,6 +501,7 @@ class PlatformClient:
 
     api_token: str = dataclasses.field(repr=False)
     organization: str
+    base_url: str = f"https://{PLATFORM_API_HOST}"
 
     def create_database(self, name: str, group: str) -> str:
         # The turso CLI's --tursodb sends use_tursodb: a database on the Turso engine.
@@ -535,7 +534,13 @@ class PlatformClient:
         self, method: str, path: str, body: dict[str, t.Any] | None = None
     ) -> dict[str, t.Any]:
         url_path = f"/v1/organizations/{self.organization}{path}"
-        connection = http.client.HTTPSConnection(PLATFORM_API_HOST)
+        parts = urllib.parse.urlsplit(self.base_url)
+        connection_type = (
+            http.client.HTTPSConnection
+            if parts.scheme == "https"
+            else http.client.HTTPConnection
+        )
+        connection = connection_type(parts.netloc)
         try:
             connection.request(
                 method,
