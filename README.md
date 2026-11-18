@@ -30,6 +30,13 @@ DATABASES = {
 }
 ```
 
+A database on the libSQL engine, such as a Turso Cloud database of type SQLite or an
+sqld server, is refused on first connection:
+
+```text
+NotSupportedError: dj-turso requires the Turso engine: the database has no turso_version() function.
+```
+
 ## One process per database file
 
 A local database file opens in one process at a time, as
