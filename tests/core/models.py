@@ -89,3 +89,22 @@ class Shift(models.Model):
 
     def __str__(self) -> str:
         return f"shift {self.pk}"
+
+
+class Slug(models.Model):
+    name = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"^[a-z-]+$"), name="slug_lowercase"
+            ),
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=models.Q(name__regex=r"^draft-"),
+                name="slug_unique_draft",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name

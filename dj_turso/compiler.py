@@ -5,7 +5,6 @@ import functools
 import typing as t
 
 import django.core.exceptions
-import django.db
 from django.db.models import aggregates, expressions, functions, lookups
 from django.db.models.sql import compiler
 
@@ -58,7 +57,7 @@ class SQLCompiler(compiler.SQLCompiler):
         if isinstance(node, HASH_FUNCTIONS):
             raise exceptions.HashFunctionNotSupportedError(type(node).__name__)
         if isinstance(node, lookups.Regex):
-            check_regex(self.using, node)
+            check_regex(t.cast("base.DatabaseWrapper", self.connection), node)
         if (
             isinstance(node, expressions.DurationExpression)
             and node.connector in DATE_ARITHMETIC_CONNECTORS
@@ -100,10 +99,10 @@ class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
 
 
 # A pattern known only once the query runs, such as a column's, goes unchecked.
-def check_regex(alias: str | None, node: lookups.Regex) -> None:
+def check_regex(connection: base.DatabaseWrapper, node: lookups.Regex) -> None:
     pattern = get_literal_pattern(node)
     if pattern is not None and not is_regex_compilable(
-        alias, node.lookup_name, pattern
+        connection, node.lookup_name, pattern
     ):
         raise exceptions.RegexNotSupportedError(pattern)
 
@@ -119,8 +118,9 @@ def get_literal_pattern(node: lookups.Regex) -> t.Any:
 # Turso's regexp() is NULL for a pattern its Rust regex crate cannot compile, which
 # would silently match nothing. The probe sends the pattern as the lookup's operator.
 @functools.lru_cache
-def is_regex_compilable(alias: str, lookup_name: str, pattern: t.Any) -> bool:
-    connection = t.cast("base.DatabaseWrapper", django.db.connections[alias])
+def is_regex_compilable(
+    connection: base.DatabaseWrapper, lookup_name: str, pattern: t.Any
+) -> bool:
     operand = connection.operators[lookup_name].removeprefix("REGEXP ")
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT regexp({operand}, '')", [pattern])

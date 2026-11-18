@@ -116,3 +116,34 @@ def test_regex_pattern_is_checked_once() -> None:
     assert [
         query["sql"].replace(pattern, "<pattern>") for query in second.captured_queries
     ] == [lookup_sql]
+
+
+@pytest.mark.django_db
+def test_regex_in_subquery_matches() -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in ["bar", "foo"])
+
+    names = models.Tag.objects.filter(
+        pk__in=models.Tag.objects.filter(name__regex="^b").values("pk")
+    ).values_list("name", flat=True)
+
+    assert list(names) == ["bar"]
+
+
+@pytest.mark.django_db
+def test_regex_check_constraint_rejects_non_matching_row() -> None:
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        models.Slug.objects.create(name="Not A Slug")
+
+    assert str(excinfo.value) == "CHECK constraint failed: slug_lowercase"
+
+
+@pytest.mark.django_db
+def test_regex_unique_constraint_condition_rejects_matching_duplicate() -> None:
+    models.Slug.objects.bulk_create(
+        models.Slug(name=name) for name in ["draft-a", "post", "post"]
+    )
+
+    with pytest.raises(django.db.IntegrityError) as excinfo:
+        models.Slug.objects.create(name="draft-a")
+
+    assert str(excinfo.value) == "UNIQUE constraint failed: core_slug.name"

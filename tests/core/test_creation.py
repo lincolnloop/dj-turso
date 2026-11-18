@@ -159,6 +159,7 @@ def test_create_replaces_existing_test_database(
         "core_event",
         "core_product",
         "core_shift",
+        "core_slug",
         "core_tag",
     ]
 
@@ -221,6 +222,7 @@ def test_parallel_setup_replaces_existing_clone(
         "core_event",
         "core_product",
         "core_shift",
+        "core_slug",
         "core_tag",
     ]
     assert listing == []
@@ -410,6 +412,7 @@ def test_url_test_name_is_left_in_place(
         ("core_event",),
         ("core_product",),
         ("core_shift",),
+        ("core_slug",),
         ("core_tag",),
     ]
 

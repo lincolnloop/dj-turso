@@ -13,6 +13,7 @@ def test_table_names_leave_out_turso_internal_tables() -> None:
         "core_event",
         "core_product",
         "core_shift",
+        "core_slug",
         "core_tag",
     ]
 
