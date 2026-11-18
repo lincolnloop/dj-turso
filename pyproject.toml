@@ -107,6 +107,7 @@ exclude = [
   "^bench/",
   "^build/",
   "^dist/",
+  "^examples/",
   "^reference/",
   "^tests/vendor/django/",
 ]

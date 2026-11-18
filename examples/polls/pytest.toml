@@ -1,0 +1,10 @@
+[pytest]
+DJANGO_SETTINGS_MODULE = "mysite.settings"
+addopts = [
+  "--cov",
+  "--cov-report=term",
+  "--junitxml=junit-examples-polls.xml",
+  "--strict-markers",
+]
+pythonpath = ["."]
+testpaths = ["tests"]
