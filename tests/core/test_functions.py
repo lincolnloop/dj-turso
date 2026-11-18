@@ -152,17 +152,19 @@ def test_bitand_combines_operands() -> None:
         pytest.param(370, -1, 365, id="integer"),
         pytest.param(-370, -1, -365, id="negative-half"),
         pytest.param(0, -3, 365, id="beyond-value"),
+        pytest.param(370, -1.5, 365, id="fractional"),
+        pytest.param(365, -0.5, 365, id="fractional-above-minus-one"),
     ],
 )
 def test_round_to_negative_precision_rounds_left_of_point(
     expected: decimal.Decimal | float,
-    precision: int,
+    precision: float,
     value: decimal.Decimal | float,
 ) -> None:
     models.Tag.objects.create(name="one")
 
     values = models.Tag.objects.values_list(
-        functions.Round(expressions.Value(value), precision), flat=True
+        functions.Round(expressions.Value(value), t.cast("int", precision)), flat=True
     )
 
     assert list(values) == [expected]
