@@ -236,9 +236,7 @@ class TunnelProxy:
 
     def tunnel(self, client: socket.socket) -> None:
         request, rest = read_http_request(client, b"")
-        if request is None:
-            client.close()
-            return
+        assert request is not None
         host, _, port = request.split(b" ", 2)[1].decode().rpartition(":")
         upstream = socket.create_connection((host, int(port)))
         with self.lock:
