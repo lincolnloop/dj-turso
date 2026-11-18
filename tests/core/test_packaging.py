@@ -12,3 +12,8 @@ def test_distribution_metadata_declares_name_and_serverless_extra() -> None:
         "pyturso<0.9,>=0.8.3",
         "turso-serverless<0.2,>=0.1.0; extra == 'serverless'",
     ]
+    assert metadata.get_all("Project-URL") == [
+        "Homepage, https://github.com/lincolnloop/dj-turso",
+        "Issues, https://github.com/lincolnloop/dj-turso/issues",
+        "Repository, https://github.com/lincolnloop/dj-turso",
+    ]

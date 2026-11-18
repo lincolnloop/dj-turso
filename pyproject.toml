@@ -76,6 +76,11 @@ serverless = [
   "turso-serverless>=0.1.0,<0.2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/lincolnloop/dj-turso"
+Issues = "https://github.com/lincolnloop/dj-turso/issues"
+Repository = "https://github.com/lincolnloop/dj-turso"
+
 [tool.coverage.report]
 exclude_also = [
   "if t.TYPE_CHECKING:",
