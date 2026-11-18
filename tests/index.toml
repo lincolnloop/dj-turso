@@ -96,7 +96,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
+issue = "https://github.com/tursodatabase/turso/issues/10665"
 kind = "upstream-bug"
 name = "subquery in HAVING returns wrong rows"
 reason = "Turso returns the wrong rows, silently, for a subquery inside HAVING"
@@ -106,7 +106,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
+issue = "https://github.com/tursodatabase/turso/issues/8550"
 kind = "upstream-bug"
 name = "compound SELECT in WHERE subquery"
 reason = "Turso rejects UNION/INTERSECT/EXCEPT inside a WHERE subquery"
@@ -117,10 +117,10 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
+issue = "https://github.com/tursodatabase/turso/pull/10952"
 kind = "upstream-bug"
 name = "mixed-case quoted table in qualified UPDATE"
-reason = "Turso fails to resolve a mixed-case quoted table name referenced as a qualified column in UPDATE"
+reason = "Turso fails to resolve a mixed-case quoted table name referenced as a qualified column in UPDATE; fixed upstream, awaiting a pyturso release"
 tests = [
   "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_datetime_subtraction_microseconds",
   "tests/vendor/django/expressions/tests.py::FTimeDeltaTests::test_delta_update",
@@ -129,10 +129,10 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
+issue = "https://github.com/tursodatabase/turso/pull/11095"
 kind = "upstream-bug"
 name = "PRAGMA foreign_keys=OFF honored inside a transaction"
-reason = "SQLite ignores PRAGMA foreign_keys inside a transaction; Turso applies it, so Django sees constraint checks disabled where it expects them still on"
+reason = "SQLite ignores PRAGMA foreign_keys inside a transaction; Turso applies it, so Django sees constraint checks disabled where it expects them still on; fixed upstream, awaiting a pyturso release"
 tests = [
   "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_constraint_checks_disabled_atomic_allowed",
   "tests/vendor/django/backends/sqlite/tests.py::SchemaTests::test_disable_constraint_checking_failure_disallowed",
@@ -140,7 +140,7 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
+issue = "https://github.com/tursodatabase/turso/issues/9429"
 kind = "upstream-bug"
 name = "case-only RENAME COLUMN"
 reason = "Turso rejects renaming a column to a name differing only in case as a duplicate column"

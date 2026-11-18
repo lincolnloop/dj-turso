@@ -178,14 +178,18 @@ declared column types for Django to convert by.
 
 dj-turso does not work around these yet:
 
-- A subquery inside `HAVING` returns the wrong rows, silently.
-- `union()`, `intersection()` or `difference()` inside a `WHERE` subquery is rejected.
+- A subquery inside `HAVING` returns the wrong rows, silently:
+  [turso#10665](https://github.com/tursodatabase/turso/issues/10665).
+- `union()`, `intersection()` or `difference()` inside a `WHERE` subquery is rejected:
+  [turso#8550](https://github.com/tursodatabase/turso/issues/8550).
 - An `UPDATE` that refers to a mixed-case quoted table name by a qualified column is
-  rejected.
+  rejected. Fixed upstream, awaiting a pyturso release:
+  [turso#10952](https://github.com/tursodatabase/turso/pull/10952).
 - `PRAGMA foreign_keys = OFF` applies inside a transaction, where SQLite ignores it, so
-  constraint checks can be off where Django expects them on.
+  constraint checks can be off where Django expects them on. Fixed upstream, awaiting a
+  pyturso release: [turso#11095](https://github.com/tursodatabase/turso/pull/11095).
 - Renaming a column to a name that differs only in case is rejected as a duplicate
-  column.
+  column: [turso#9429](https://github.com/tursodatabase/turso/issues/9429).
 
 ## Running the tests
 
