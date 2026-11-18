@@ -121,18 +121,24 @@ Tag.objects.filter(name__regex=r"b(.).*b\1")  # raises NotSupportedError
 - A possessive quantifier such as `a*+` runs, but as a repetition repeated, not a
   possessive one: `a*+a` matches `aa` on Turso, where Python's `re` matches nothing.
 
-## Rounding
+## Beyond Django's SQLite backend
 
-`Round` takes a negative precision, which Django's sqlite3 backend refuses, and rounds
-left of the decimal point:
+dj-turso runs these, where Django's sqlite3 backend raises or computes otherwise:
 
-```python
-Product.objects.annotate(rounded=Round("price", -1))  # 365 rounds to 370
-Product.objects.annotate(rounded=Round("price", F("places")))  # places may be negative
-```
+- `Round` to a negative precision rounds left of the decimal point. Django's sqlite3
+  backend raises `ValueError`.
 
-A precision given as an expression, such as a column's, a function's or a subquery's,
-may be negative too.
+  ```python
+  Product.objects.annotate(rounded=Round("price", -1))  # 365 rounds to 370
+  ```
+
+- `Round` to a precision given as an expression, such as a column's, which may be
+  negative. A dj-turso extension: Django documents the precision as an integer on every
+  backend. Django's sqlite3 backend runs it, but rounds to a negative precision as to 0.
+
+  ```python
+  Product.objects.annotate(rounded=Round("price", F("places")))  # places may be -1
+  ```
 
 ## Unsupported features
 
