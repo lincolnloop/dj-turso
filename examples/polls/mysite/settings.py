@@ -52,6 +52,15 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+# https://django-debug-toolbar.readthedocs.io/en/latest/installation.html
+ENABLE_DEBUG_TOOLBAR = os.environ.get("ENABLE_DEBUG_TOOLBAR", "1") == "1"
+
+if ENABLE_DEBUG_TOOLBAR:
+    INSTALLED_APPS = [*INSTALLED_APPS, "debug_toolbar"]
+    MIDDLEWARE = ["debug_toolbar.middleware.DebugToolbarMiddleware", *MIDDLEWARE]
+
+INTERNAL_IPS = ["127.0.0.1"]
+
 ROOT_URLCONF = "mysite.urls"
 
 TEMPLATES = [

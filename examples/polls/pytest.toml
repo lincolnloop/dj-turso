@@ -6,5 +6,6 @@ addopts = [
   "--junitxml=junit-examples-polls.xml",
   "--strict-markers",
 ]
+env = ["ENABLE_DEBUG_TOOLBAR=0"]
 pythonpath = ["."]
 testpaths = ["tests"]
