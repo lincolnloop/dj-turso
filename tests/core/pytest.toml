@@ -4,6 +4,7 @@ addopts = [
   "--confcutdir=..",
   "--cov",
   "--cov-report=xml",
+  "--disable-socket",
   "--junitxml=junit-core.xml",
   "--strict-markers",
 ]

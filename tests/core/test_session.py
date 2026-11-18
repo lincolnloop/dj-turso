@@ -640,7 +640,7 @@ def test_answer_slower_than_connect_timeout_is_awaited_after_reconnect(
 # A server that accepts the TCP connection but never answers the TLS handshake.
 @pytest.mark.timeout(session.CONNECT_TIMEOUT + 5)
 def test_unanswered_connect_fails_after_connect_timeout(
-    django_db_blocker: pytest_django.DjangoDbBlocker,
+    django_db_blocker: pytest_django.DjangoDbBlocker, loopback_network: None
 ) -> None:
     with socket.create_server(("127.0.0.1", 0)) as listener:
         port = listener.getsockname()[1]
@@ -770,28 +770,17 @@ def test_http_proxy_credentials_from_environment_authorize_queries(
 
 
 def test_https_proxy_from_environment_tunnels_queries(
+    cloud_settings: dict[str, t.Any],
     django_db_blocker: pytest_django.DjangoDbBlocker,
     monkeypatch: pytest.MonkeyPatch,
     tunnel_proxy: utils.TunnelProxy,
 ) -> None:
-    url = os.environ.get("TURSO_DATABASE_URL", "")
-    auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
-    if not (url and auth_token):
-        pytest.skip("needs TURSO_DATABASE_URL and TURSO_AUTH_TOKEN")
     for name in ("HTTPS_PROXY", "NO_PROXY", "no_proxy"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(
         "https_proxy", f"http://us%40er:p%3Ass@127.0.0.1:{tunnel_proxy.port}"
     )
-    handler = django.db.utils.ConnectionHandler(
-        {
-            "default": {
-                "ENGINE": "dj_turso",
-                "NAME": url,
-                "OPTIONS": {"auth_token": auth_token},
-            }
-        }
-    )
+    handler = django.db.utils.ConnectionHandler({"default": cloud_settings})
     connection = t.cast("base.DatabaseWrapper", handler["default"])
 
     with django_db_blocker.unblock():
@@ -800,7 +789,7 @@ def test_https_proxy_from_environment_tunnels_queries(
             rows = cursor.fetchall()
         connection.close()
 
-    host = urllib.parse.urlsplit(url).hostname
+    host = urllib.parse.urlsplit(cloud_settings["NAME"]).hostname
     assert rows == [(1,)]
     assert tunnel_proxy.received_requests == [
         f"CONNECT {host}:443 HTTP/1.1\r\n"

@@ -146,7 +146,7 @@ def test_missing_auth_token_raises_operational_error(
 # The driver files an error coded by nothing as an integrity error when its message
 # mentions a constraint, and a URL can.
 def test_unreachable_url_naming_a_constraint_raises_operational_error(
-    django_db_blocker: pytest_django.DjangoDbBlocker,
+    django_db_blocker: pytest_django.DjangoDbBlocker, loopback_network: None
 ) -> None:
     handler = django.db.utils.ConnectionHandler(
         {"default": {"ENGINE": "dj_turso", "NAME": "http://127.0.0.1:1/unique"}}

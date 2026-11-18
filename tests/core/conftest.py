@@ -10,6 +10,7 @@ import django.db.utils
 import pytest
 import pytest_django
 import pytest_httpserver
+import pytest_socket
 
 from dj_turso import base, session
 from tests import utils
@@ -17,6 +18,10 @@ from tests import utils
 pytest_plugins = ["pytester"]
 
 STUB_STREAM_IDLE_TIMEOUT = 3
+
+LOOPBACK_HOST = "127.0.0.1"
+
+allowed_hosts_key = pytest.StashKey[set[str]]()
 
 
 # Per-worker database files: two processes cannot open one Turso file.
@@ -104,12 +109,41 @@ def item_table(
 
 # Threaded, so that it speaks HTTP/1.1 and keeps connections open as Turso Cloud does.
 @pytest.fixture(scope="session")
-def make_httpserver() -> collections.abc.Iterator[pytest_httpserver.HTTPServer]:
-    server = pytest_httpserver.HTTPServer(host="127.0.0.1", port=0, threaded=True)
+def make_httpserver(
+    request: pytest.FixtureRequest,
+) -> collections.abc.Iterator[pytest_httpserver.HTTPServer]:
+    allow_hosts(request, LOOPBACK_HOST)
+    server = pytest_httpserver.HTTPServer(host=LOOPBACK_HOST, port=0, threaded=True)
     server.start()
     yield server
     server.clear()
     server.stop()
+
+
+# The server outlives the test that started it; each test using it reaches it anew.
+@pytest.fixture
+def httpserver(
+    loopback_network: None, make_httpserver: pytest_httpserver.HTTPServer
+) -> pytest_httpserver.HTTPServer:
+    make_httpserver.clear()
+    return make_httpserver
+
+
+# The suite runs with sockets disabled; a test connects only to the hosts its
+# fixtures allow.
+@pytest.fixture
+def loopback_network(request: pytest.FixtureRequest) -> None:
+    allow_hosts(request, LOOPBACK_HOST)
+
+
+@pytest.fixture
+def cloud_settings(request: pytest.FixtureRequest) -> dict[str, t.Any]:
+    url = os.environ.get("TURSO_DATABASE_URL", "")
+    auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
+    if not (url and auth_token):
+        pytest.skip("needs TURSO_DATABASE_URL and TURSO_AUTH_TOKEN")
+    allow_hosts(request, str(urllib.parse.urlsplit(url).hostname))
+    return {"ENGINE": "dj_turso", "NAME": url, "OPTIONS": {"auth_token": auth_token}}
 
 
 # Turso Cloud's HTTP API on a database of the test's own. Its streams idle out sooner
@@ -195,7 +229,7 @@ def proxied_target(
 
 
 @pytest.fixture
-def tunnel_proxy() -> collections.abc.Iterator[utils.TunnelProxy]:
+def tunnel_proxy(loopback_network: None) -> collections.abc.Iterator[utils.TunnelProxy]:
     proxy = utils.TunnelProxy()
     yield proxy
     proxy.close()
@@ -205,15 +239,21 @@ def tunnel_proxy() -> collections.abc.Iterator[utils.TunnelProxy]:
 
 
 def get_remote_settings(request: pytest.FixtureRequest) -> dict[str, t.Any]:
-    if request.param == "stub":
-        stub = request.getfixturevalue("hrana_stub")
-        url, auth_token = stub.url, stub.auth_token
-    else:
-        url = os.environ.get("TURSO_DATABASE_URL", "")
-        auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
-        if not (url and auth_token):
-            pytest.skip("needs TURSO_DATABASE_URL and TURSO_AUTH_TOKEN")
-    return {"ENGINE": "dj_turso", "NAME": url, "OPTIONS": {"auth_token": auth_token}}
+    if request.param == "cloud":
+        return t.cast("dict[str, t.Any]", request.getfixturevalue("cloud_settings"))
+    stub = request.getfixturevalue("hrana_stub")
+    return {
+        "ENGINE": "dj_turso",
+        "NAME": stub.url,
+        "OPTIONS": {"auth_token": stub.auth_token},
+    }
+
+
+def allow_hosts(request: pytest.FixtureRequest, host: str) -> None:
+    allowed_hosts = request.node.stash.setdefault(allowed_hosts_key, set())
+    allowed_hosts.add(host)
+    pytest_socket.enable_socket()
+    pytest_socket.socket_allow_hosts(sorted(allowed_hosts))
 
 
 def drop_item_table(connection: base.DatabaseWrapper) -> None:
