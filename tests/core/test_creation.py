@@ -4,6 +4,7 @@ import errno
 import os
 import pathlib
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -53,6 +54,15 @@ def register_database(
             django.db.connections[alias].close()
             del django.db.connections[alias]
         django.db.connections.settings = original
+
+
+# The forkserver binds a Unix socket under TMPDIR, and pytest's tmp_path is past
+# the 104-byte socket path limit on macOS.
+@pytest.fixture
+def short_tmp_path() -> collections.abc.Iterator[pathlib.Path]:
+    directory = pathlib.Path(tempfile.mkdtemp())
+    yield directory
+    shutil.rmtree(directory)
 
 
 @pytest.mark.parametrize(
@@ -383,7 +393,7 @@ def test_clone_refuses_url_test_database(register_database: RegisterDatabase) ->
     ],
 )
 def test_parallel_run_gives_each_worker_a_clone(
-    start_method: str, tmp_path: pathlib.Path
+    short_tmp_path: pathlib.Path, start_method: str, tmp_path: pathlib.Path
 ) -> None:
     child = (
         "import multiprocessing, os, tempfile, django, django.core.management;"
@@ -404,7 +414,7 @@ def test_parallel_run_gives_each_worker_a_clone(
             **os.environ,
             "DJANGO_SETTINGS_MODULE": "tests.core.settings",
             "PYTHONPATH": str(REPOSITORY_ROOT),
-            "TMPDIR": str(tmp_path),
+            "TMPDIR": str(short_tmp_path),
         },
         text=True,
     )
@@ -424,7 +434,7 @@ def test_parallel_run_gives_each_worker_a_clone(
         "Destroying test database for alias 'default'...\n"
         "Destroying test database for alias 'default'...\n"
     )
-    assert sorted(path.name for path in tmp_path.iterdir()) == []
+    assert sorted(path.name for path in short_tmp_path.iterdir()) == []
 
 
 # Fork copies the in-memory test database; forkserver and spawn open a clone file.
