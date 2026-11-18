@@ -275,6 +275,31 @@ def test_other_error_from_turso_version_raises_it(
     assert str(excinfo.value) == "Tursodb error: Database is busy"
 
 
+# The driver decodes a malformed row without catching its TypeError.
+def test_type_error_decoding_response_is_not_relabeled(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    httpserver: pytest_httpserver.HTTPServer,
+    request: pytest.FixtureRequest,
+) -> None:
+    utils.expect_stream_start(httpserver)
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        '{"baton": "baton", "base_url": null}\n'
+        '{"type": "step_begin", "step": 0, "cols": [{"name": "turso_version()"}]}\n'
+        '{"type": "row", "row": 5}\n'
+    )
+    handler = django.db.utils.ConnectionHandler(
+        {"default": {"ENGINE": "dj_turso", "NAME": httpserver.url_for("").rstrip("/")}}
+    )
+    connection = base.DatabaseWrapper(handler.settings["default"], request.node.name)
+
+    with django_db_blocker.unblock(), pytest.raises(TypeError) as excinfo:
+        connection.ensure_connection()
+    connection.close()
+
+    assert type(excinfo.value) is TypeError
+    assert str(excinfo.value) == "'int' object is not iterable"
+
+
 def test_failing_init_command_raises_operational_error(
     django_db_blocker: pytest_django.DjangoDbBlocker, remote_settings: dict[str, t.Any]
 ) -> None:

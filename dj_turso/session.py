@@ -85,14 +85,16 @@ class KeepAliveSession(serverless_session.Session):
         named_args: list[tuple[str, t.Any]] | None = None,
         want_rows: bool = True,
     ) -> serverless_session.StmtResult:
+        # The driver raises a parameter it cannot encode as bare TypeError, which
+        # Django would not wrap; stdlib sqlite3 raises ProgrammingError.
+        try:
+            protocol.build_batch_step(sql, args, named_args)
+        except TypeError as exc:
+            raise turso_serverless.ProgrammingError(str(exc)) from exc
         in_transaction = not self._autocommit
         self.stream_was_reset = False
         try:
             result = super().execute_stmt(sql, args, named_args, want_rows)
-        # The driver raises a parameter it cannot encode as bare TypeError, which
-        # Django would not wrap; stdlib sqlite3 raises ProgrammingError.
-        except TypeError as exc:
-            raise turso_serverless.ProgrammingError(str(exc)) from exc
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
                 self.lost_transaction_error = LostTransactionError
