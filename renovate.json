@@ -61,10 +61,11 @@
       "groupName": "type checking"
     },
     {
-      "description": "Turso releases carry the upstream fixes dj-turso waits on, so they skip the cooloff, in both places (see [tool.uv.exclude-newer-package]). Merged by hand: dj-turso imports pyturso's private turso._turso module, the runtime ranges cap the minor version, and a release that fixes a tracked upstream bug turns its strict xfail in tests/index.toml into an XPASS to clean up.",
+      "description": "Turso releases carry the upstream fixes dj-turso waits on, so they skip the cooloff, in both places (see [tool.uv.exclude-newer-package]). Approved on the dependency dashboard and merged by hand: dj-turso imports pyturso's private turso._turso module, the runtime ranges cap the minor version, and a release that fixes a tracked upstream bug turns its strict xfail in tests/index.toml into an XPASS to clean up.",
       "matchPackageNames": ["pyturso", "turso-serverless"],
       "groupName": "turso",
       "minimumReleaseAge": "0",
+      "dependencyDashboardApproval": true,
       "automerge": false
     },
     {
