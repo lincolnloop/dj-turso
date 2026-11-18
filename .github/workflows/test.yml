@@ -33,6 +33,8 @@ jobs:
         include:
           - env: py312-django61-mypy
             name: mypy-lowest
+          - env: py315-django61-mypy
+            name: mypy-highest
     env:
       # Worker count for tox's `-n auto`; a runner has more cores than the suites
       # profitably use, and 2 is enough to keep the parallel path exercised.
