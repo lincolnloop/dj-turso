@@ -425,6 +425,53 @@ def test_query_after_stream_expiry_runs_with_session_setup(
 
 
 @pytest.mark.timeout(30)
+def test_disabled_constraint_checking_survives_stream_expiry(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    disabled = remote_target.disable_constraint_checking()
+    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+    with remote_target.cursor() as cursor:
+        cursor.execute("PRAGMA foreign_keys")
+        rows = cursor.fetchall()
+
+    assert disabled is True
+    assert rows == [(0,)]
+
+
+@pytest.mark.timeout(30)
+def test_reenabled_constraint_checking_survives_stream_expiry(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    remote_target.disable_constraint_checking()
+    remote_target.enable_constraint_checking()
+    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+    with remote_target.cursor() as cursor:
+        cursor.execute("PRAGMA foreign_keys")
+        rows = cursor.fetchall()
+
+    assert rows == [(1,)]
+
+
+# SQLite ignores the pragma inside a transaction, and Turso applies it: either way,
+# a new stream keeps what the old one had.
+@pytest.mark.timeout(30)
+def test_constraint_checking_disabled_inside_transaction_survives_stream_expiry(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    with remote_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        remote_target.disable_constraint_checking()
+        cursor.execute("COMMIT")
+        cursor.execute("PRAGMA foreign_keys")
+        rows_before_expiry = cursor.fetchall()
+        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        cursor.execute("PRAGMA foreign_keys")
+        rows = cursor.fetchall()
+
+    assert rows == rows_before_expiry
+
+
+@pytest.mark.timeout(30)
 def test_close_after_stream_expiry_starts_no_new_stream(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:

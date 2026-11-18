@@ -5,6 +5,7 @@ import contextlib
 import http
 import http.client
 import json
+import re
 import selectors
 import time
 import typing as t
@@ -29,6 +30,12 @@ STREAM_IDLE_MARGIN = 1
 # long statement is never cut off.
 CONNECT_TIMEOUT = 10
 
+# Sets the foreign key pragma, as Django's disable_constraint_checking() does; a read
+# of it, PRAGMA foreign_keys alone, does not match.
+FOREIGN_KEYS_ASSIGNMENT_REGEX = re.compile(
+    r"\s*PRAGMA\s+(?:\w+\.)?foreign_keys\s*[=(]", re.IGNORECASE
+)
+
 
 class LostTransactionError(
     exceptions.TursoBackendError, turso_serverless.OperationalError
@@ -51,6 +58,7 @@ class KeepAliveSession(serverless_session.Session):
         self.forward_proxy_headers: dict[str, str] | None = None
         self.transaction_lost = False
         self.setup_statements: list[str] = []
+        self.foreign_keys_statement: str | None = None
         self.starting_stream = False
         self.stream_was_reset = False
         self.last_response_time = time.monotonic()
@@ -76,6 +84,11 @@ class KeepAliveSession(serverless_session.Session):
         if in_transaction and self.stream_was_reset:
             self.transaction_lost = True
             raise LostTransactionError
+        # Read back, not copied: inside a transaction SQLite ignores the pragma, and
+        # Turso applies it.
+        if FOREIGN_KEYS_ASSIGNMENT_REGEX.match(sql):
+            enabled = self.execute_stmt("PRAGMA foreign_keys").rows[0][0]
+            self.foreign_keys_statement = f"PRAGMA foreign_keys = {enabled}"
         return result
 
     def _reset_stream(self) -> None:
@@ -104,14 +117,18 @@ class KeepAliveSession(serverless_session.Session):
         return self.post_on_connection(path, body)
 
     # Each server stream is a SQL connection of its own, so each one starts with the
-    # session setup Django's connection asked for.
+    # session setup Django's connection asked for, then the foreign key pragma as it
+    # was last set.
     def start_stream(self) -> None:
+        statements = self.setup_statements
+        if self.foreign_keys_statement is not None:
+            statements = [*statements, self.foreign_keys_statement]
         self.starting_stream = True
         try:
             results = self.execute_pipeline(
                 [
                     {"type": "execute", "stmt": {"sql": sql, "want_rows": False}}
-                    for sql in self.setup_statements
+                    for sql in statements
                 ]
             )
             for result in results:
