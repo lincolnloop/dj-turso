@@ -418,7 +418,7 @@ def test_url_test_name_is_left_in_place(
         ("core_tag",),
     ]
     assert capsys.readouterr().err == (
-        "Using existing test database for alias 'creation'...\n"
+        "Creating test database for alias 'creation'...\n"
         "Preserving test database for alias 'creation'...\n"
     )
 

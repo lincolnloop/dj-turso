@@ -11,24 +11,30 @@ from dj_turso import drivers
 DATABASE_FILE_SUFFIXES = ("", "-wal", "-shm")
 
 
-class DatabaseCreation(sqlite_creation.DatabaseCreation):
-    if t.TYPE_CHECKING:
-        # Django's own, left out of django-stubs.
+# Django's own methods, left out of django-stubs.
+if t.TYPE_CHECKING:
+
+    class SqliteDatabaseCreation(sqlite_creation.DatabaseCreation):
+        def _create_test_db(
+            self, verbosity: int, autoclobber: bool, keepdb: bool = False
+        ) -> str: ...
+
         def _get_database_display_str(
             self, verbosity: int, database_name: str
         ) -> str: ...
 
-    # dj-turso never creates or destroys a remote test database, so Django logs it as
-    # with keepdb.
-    def create_test_db(
-        self,
-        verbosity: int = 1,
-        autoclobber: bool = False,
-        serialize: bool | None = None,
-        keepdb: bool = False,
+else:
+    SqliteDatabaseCreation = sqlite_creation.DatabaseCreation
+
+
+class DatabaseCreation(SqliteDatabaseCreation):
+    # dj-turso never creates or destroys a remote test database: Django runs these as
+    # with keepdb. create_test_db() stays Django's, for its warnings' stack level.
+    def _create_test_db(
+        self, verbosity: int, autoclobber: bool, keepdb: bool = False
     ) -> str:
         keepdb = keepdb or drivers.is_remote_name(self._get_test_db_name())
-        return super().create_test_db(verbosity, autoclobber, serialize, keepdb)
+        return super()._create_test_db(verbosity, autoclobber, keepdb)
 
     def destroy_test_db(
         self,
