@@ -630,9 +630,9 @@ def test_duration_with_invalid_connector_raises_database_error(
 # are read first for monkeypatch to restore.
 def use_database_time_zone(monkeypatch: pytest.MonkeyPatch, tzname: str) -> None:
     connection = django.db.connections["default"]
-    monkeypatch.setattr(
-        connection, "settings_dict", {**connection.settings_dict, "TIME_ZONE": tzname}
-    )
     for name in ("timezone", "timezone_name"):
         getattr(connection, name)
         monkeypatch.delattr(connection, name)
+    monkeypatch.setattr(
+        connection, "settings_dict", {**connection.settings_dict, "TIME_ZONE": tzname}
+    )
