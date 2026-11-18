@@ -147,8 +147,8 @@ query:
 - A regular expression Turso cannot compile: see
   [Regular expressions](#regular-expressions).
 
-`GeneratedField` fails Django's system checks: Turso's generated columns are
-experimental and off by default.
+`GeneratedField` fails Django's database system checks, which `migrate` runs: Turso's
+generated columns are experimental and off by default.
 
 A raw cursor returns date and time columns as the stored text, where Django's sqlite3
 backend returns `date`, `datetime` and `time` objects: Turso's drivers report no

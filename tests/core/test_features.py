@@ -1,5 +1,10 @@
+import pathlib
+
 import django.db
 import pytest
+import pytest_django
+from django.core import management
+from django.core.management import base
 from django.db.models import aggregates, expressions
 from django.test import utils as test_utils
 
@@ -42,4 +47,44 @@ def test_ordered_aggregate_raises_not_supported_error() -> None:
 
     assert str(excinfo.value) == (
         "This database backend does not support specifying an order on aggregates."
+    )
+
+
+def test_generated_field_fails_database_system_check(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: pytest_django.Settings,
+    tmp_path: pathlib.Path,
+) -> None:
+    app_path = tmp_path / "generated_app"
+    app_path.mkdir()
+    (app_path / "__init__.py").write_text("")
+    (app_path / "models.py").write_text(
+        "from django.db import models\n"
+        "\n"
+        "\n"
+        "class Square(models.Model):\n"
+        "    side = models.IntegerField()\n"
+        "    area = models.GeneratedField(\n"
+        '        expression=models.F("side") * models.F("side"),\n'
+        "        output_field=models.IntegerField(),\n"
+        "        db_persist=True,\n"
+        "    )\n"
+    )
+    monkeypatch.syspath_prepend(tmp_path)
+    settings.INSTALLED_APPS = [*settings.INSTALLED_APPS, "generated_app"]
+
+    with pytest.raises(base.SystemCheckError) as excinfo:
+        management.call_command("check", "generated_app", databases=["default"])
+
+    assert str(excinfo.value) == (
+        "SystemCheckError: System check identified some issues:\n"
+        "\n"
+        "ERRORS:\n"
+        "generated_app.Square.area: (fields.E220) Turso does not support "
+        "GeneratedFields.\n"
+        "generated_app.Square.area: (fields.E222) Turso does not support persisted "
+        "GeneratedFields.\n"
+        "\tHINT: Set db_persist=False on the field.\n"
+        "\n"
+        "System check identified 2 issues (0 silenced)."
     )
