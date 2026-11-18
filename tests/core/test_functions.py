@@ -4,6 +4,7 @@ import functools
 import math
 import operator
 import statistics
+import typing as t
 import uuid
 
 import django.db
@@ -137,6 +138,73 @@ def test_round_to_negative_precision_rounds_left_of_point(
 
     assert list(values) == [expected]
     assert [type(result) for result in values] == [type(expected)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "mask", "value"),
+    [
+        pytest.param(decimal.Decimal(370), -1, decimal.Decimal("365.25"), id="decimal"),
+        pytest.param(400.0, -2, 365.25, id="float"),
+        pytest.param(370, -1, 365, id="integer"),
+        pytest.param(-370, -1, -365, id="negative-half"),
+        pytest.param(0, -3, 365, id="beyond-value"),
+        pytest.param(365.26, 2, 365.257, id="right-of-point"),
+        pytest.param(365.0, 0, 365.25, id="zero"),
+    ],
+)
+def test_round_to_column_precision(
+    expected: decimal.Decimal | float,
+    mask: int,
+    value: decimal.Decimal | float,
+) -> None:
+    models.Counter.objects.create(mask=mask, value=0)
+
+    values = models.Counter.objects.values_list(
+        functions.Round(expressions.Value(value), t.cast("int", "mask")), flat=True
+    )
+
+    assert list(values) == [expected]
+    assert [type(result) for result in values] == [type(expected)]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("expected", "precision"),
+    [
+        pytest.param(400, expressions.F("mask") - 1, id="combined-with-parameter"),
+        pytest.param(370, functions.Sign("mask"), id="function"),
+        pytest.param(
+            370,
+            expressions.Subquery(models.Counter.objects.values("mask")[:1]),
+            id="subquery",
+        ),
+    ],
+)
+def test_round_to_expression_precision_rounds_left_of_point(
+    expected: int, precision: expressions.Expression
+) -> None:
+    models.Counter.objects.create(mask=-1, value=0)
+
+    values = models.Counter.objects.values_list(
+        functions.Round(expressions.Value(365), t.cast("int", precision)), flat=True
+    )
+
+    assert list(values) == [expected]
+
+
+@pytest.mark.django_db
+def test_round_to_null_expression_precision_is_null() -> None:
+    models.Counter.objects.create(mask=-1, value=0)
+
+    values = models.Counter.objects.values_list(
+        functions.Round(
+            expressions.Value(365.25), t.cast("int", functions.NullIf("mask", "mask"))
+        ),
+        flat=True,
+    )
+
+    assert list(values) == [None]
 
 
 @pytest.mark.django_db

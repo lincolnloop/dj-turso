@@ -24,8 +24,9 @@ NATIVE_TEMPLATES: dict[type[expressions.Func], str] = {
 }
 
 # Turso, like SQLite, ignores a negative ROUND precision; scale to units and back.
-# The factor is a real literal so integer operands do not divide as integers.
-ROUND_LEFT_OF_POINT_TEMPLATE = "(ROUND(%(expressions)s / {factor}) * {factor})"
+# POWER returns a real, so integer operands do not divide as integers.
+ROUND_TEMPLATE = "(ROUND(%(expressions)s / {scale}, MAX({precision}, 0)) * {scale})"
+ROUND_SCALE_TEMPLATE = "POWER(10, -MIN({precision}, 0))"
 
 HASH_FUNCTIONS = (
     functions.MD5,
@@ -69,8 +70,8 @@ class SQLCompiler(compiler.SQLCompiler):
             and node.connector == expressions.Combinable.BITXOR
         ):
             return compile_bitxor(self, node)
-        if isinstance(node, functions.Round) and has_negative_precision(node):
-            return compile_round_left_of_point(self, node)
+        if isinstance(node, functions.Round) and may_have_negative_precision(node):
+            return compile_round(self, node)
         if isinstance(node, aggregates.Aggregate):
             aggregate_compiler = AGGREGATE_COMPILERS.get(node.function)
             if aggregate_compiler is not None:
@@ -127,27 +128,30 @@ def is_regex_compilable(
         return cursor.fetchone()[0] is not None
 
 
-def has_negative_precision(node: functions.Round) -> bool:
+# A precision known only once the query runs, such as a column's, may be negative.
+def may_have_negative_precision(node: functions.Round) -> bool:
     precision = node.get_source_expressions()[1]
-    return isinstance(precision, expressions.Value) and precision.value < 0
+    return not isinstance(precision, expressions.Value) or precision.value < 0
 
 
 # Func's own as_sqlite keeps Django's NUMERIC cast of decimal results, which Round's
-# would refuse for a negative precision.
-def compile_round_left_of_point(
-    compiler: SQLCompiler, node: functions.Round
-) -> SQLParams:
+# would refuse for a negative precision. The precision repeats, with its parameters.
+def compile_round(compiler: SQLCompiler, node: functions.Round) -> SQLParams:
     value, precision = node.get_source_expressions()
-    factor = f"1{'0' * -int(precision.value)}.0"
+    precision_sql, precision_params = compiler.compile(precision)
+    precision_sql = precision_sql.replace("%", "%%")
     rounded = node.copy()
     rounded.set_source_expressions([value])
     sql, params = expressions.Func.as_sqlite(
         rounded,
         compiler,
         compiler.connection,
-        template=ROUND_LEFT_OF_POINT_TEMPLATE.format(factor=factor),
+        template=ROUND_TEMPLATE.format(
+            precision=precision_sql,
+            scale=ROUND_SCALE_TEMPLATE.format(precision=precision_sql),
+        ),
     )
-    return sql, tuple(params)
+    return sql, (*params, *precision_params, *precision_params, *precision_params)
 
 
 def compile_bitxor(
