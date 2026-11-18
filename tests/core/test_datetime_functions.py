@@ -532,13 +532,30 @@ def test_date_arithmetic_unique_index_rejects_duplicate() -> None:
         duration=dt.timedelta(hours=1),
     )
 
-    # Turso's message spells out the whole indexed expression.
-    with pytest.raises(django.db.IntegrityError):
+    with pytest.raises(django.db.IntegrityError) as excinfo:
         models.Shift.objects.create(
             start=dt.datetime(2015, 8, 16, tzinfo=dt.UTC),
             end=dt.datetime(2015, 8, 16, 2, tzinfo=dt.UTC),
             duration=dt.timedelta(hours=2),
         )
+
+    assert str(excinfo.value) == (
+        "UNIQUE constraint failed: core_shift.((STRFTIME (CASE WHEN INSTR "
+        "(\"start\", ' ') THEN '%Y-%m-%d %H:%M:%S' WHEN INSTR (\"start\", ':') "
+        "THEN '%H:%M:%S' ELSE '%Y-%m-%d' END, (((UNIXEPOCH (\"start\") * "
+        "1000000 + CASE WHEN INSTR (\"start\", '.') THEN CAST (SUBSTR (SUBSTR "
+        "(\"start\", INSTR (\"start\", '.') + 1) || '000000', 1, 6) AS INTEGER) "
+        'ELSE 0 END) + "duration") - (((((UNIXEPOCH ("start") * 1000000 + '
+        'CASE WHEN INSTR ("start", \'.\') THEN CAST (SUBSTR (SUBSTR ("start", '
+        "INSTR (\"start\", '.') + 1) || '000000', 1, 6) AS INTEGER) ELSE 0 END)"
+        ' + "duration") % 1000000) + 1000000) % 1000000)) / 1000000, '
+        "'unixepoch') || CASE WHEN INSTR (\"start\", ':') THEN \"REPLACE\" "
+        "(PRINTF ('.%06d', (((((UNIXEPOCH (\"start\") * 1000000 + CASE WHEN "
+        'INSTR ("start", \'.\') THEN CAST (SUBSTR (SUBSTR ("start", INSTR '
+        "(\"start\", '.') + 1) || '000000', 1, 6) AS INTEGER) ELSE 0 END) + "
+        "\"duration\") % 1000000) + 1000000) % 1000000)), '.000000', '') ELSE "
+        "'' END))"
+    )
 
 
 @pytest.mark.django_db
