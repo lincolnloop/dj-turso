@@ -35,13 +35,6 @@ jobs:
             name: mypy-lowest
           - env: py315-django61-mypy
             name: mypy-highest
-    # The dev job runs the Cloud tests on a database every branch shares, so one runs
-    # at a time across branches; every other job's group is its own.
-    concurrency:
-      group: >-
-        ${{ matrix.env == 'dev' && 'turso-cloud'
-        || format('{0}-{1}', github.run_id, matrix.env) }}
-      cancel-in-progress: false
     env:
       # Worker count for tox's `-n auto`; a runner has more cores than the suites
       # profitably use, and 2 is enough to keep the parallel path exercised.
@@ -54,13 +47,13 @@ jobs:
         uses: astral-sh/setup-uv@v10.2.0
       - name: Run tox
         run: uvx --with tox-uv tox -e "${{ matrix.env }}"
-        # One job only: the Cloud database is shared, and the tests lock it only
-        # within a runner. Without the secrets, as on a fork, the Cloud tests skip.
+        # One job only: every other job would create Cloud databases of its own.
+        # Without the secret, as on a fork, the Cloud tests skip.
         env:
-          TURSO_DATABASE_URL: >-
-            ${{ matrix.env == 'dev' && secrets.TURSO_DATABASE_URL || '' }}
-          TURSO_AUTH_TOKEN: >-
-            ${{ matrix.env == 'dev' && secrets.TURSO_AUTH_TOKEN || '' }}
+          TURSO_API_TOKEN: >-
+            ${{ matrix.env == 'dev' && secrets.TURSO_API_TOKEN || '' }}
+          TURSO_ORG: ${{ matrix.env == 'dev' && vars.TURSO_ORG || '' }}
+          TURSO_TEST_GROUP: ${{ matrix.env == 'dev' && vars.TURSO_TEST_GROUP || '' }}
       - name: Upload coverage to Codecov
         if: ${{ (success() || failure()) && !contains(matrix.env, 'mypy') }}
         uses: codecov/codecov-action@v7.1.1
