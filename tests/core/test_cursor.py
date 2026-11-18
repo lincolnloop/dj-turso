@@ -1,6 +1,7 @@
 import datetime as dt
 import decimal
 import enum
+import math
 import typing as t
 import uuid
 
@@ -11,6 +12,7 @@ from django.db import models as django_models
 from django.db.models import expressions
 
 from dj_turso import base
+from tests import utils
 from tests.core import models
 
 
@@ -165,6 +167,26 @@ def test_unbindable_remote_parameter_error_is_chained_from_type_error(
 
     assert type(excinfo.value.__cause__) is turso_serverless.ProgrammingError
     assert type(excinfo.value.__cause__.__cause__) is TypeError
+
+
+# The protocol carries no infinite float; the drivers on a file bind it.
+def test_infinite_remote_parameter_raises_programming_error(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    with (
+        remote_target.cursor() as cursor,
+        pytest.raises(django.db.ProgrammingError) as excinfo,
+    ):
+        cursor.execute("SELECT %s", [math.inf])
+
+    assert str(excinfo.value) == (
+        "infinite float values cannot be sent over the protocol"
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.ProgrammingError,
+        turso_serverless.ProgrammingError,
+        ValueError,
+    ]
 
 
 @pytest.mark.usefixtures("item_table")
