@@ -451,6 +451,20 @@ def test_duration_divided_by_number_keeps_fraction() -> None:
 
 
 @pytest.mark.django_db
+def test_duration_divided_by_zero_is_null() -> None:
+    models.Event.objects.create(duration=dt.timedelta(seconds=3))
+
+    values = models.Event.objects.values_list(
+        expressions.ExpressionWrapper(
+            expressions.F("duration") / 0, output_field=fields.DurationField()
+        ),
+        flat=True,
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
 def test_datetime_minus_datetime_gives_duration() -> None:
     models.Event.objects.create(
         start=dt.datetime(1960, 1, 1, 0, 0, 0, 1, dt.UTC),

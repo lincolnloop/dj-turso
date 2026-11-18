@@ -41,6 +41,35 @@ def test_cot_of_decimal_compares_as_number() -> None:
 
 
 @pytest.mark.django_db
+def test_cot_of_zero_is_null() -> None:
+    models.Tag.objects.create(name="one")
+
+    values = models.Tag.objects.values_list(
+        functions.Cot(expressions.Value(0.0)), flat=True
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "dividend",
+    [
+        pytest.param(1.0, id="float"),
+        pytest.param(1, id="integer"),
+    ],
+)
+def test_division_by_zero_is_null(dividend: float) -> None:
+    models.Tag.objects.create(name="one")
+
+    values = models.Tag.objects.values_list(
+        expressions.Value(dividend) / expressions.Value(0), flat=True
+    )
+
+    assert list(values) == [None]
+
+
+@pytest.mark.django_db
 def test_random_is_in_unit_interval() -> None:
     models.Tag.objects.bulk_create(models.Tag(name=str(number)) for number in range(50))
 

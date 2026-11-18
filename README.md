@@ -157,6 +157,9 @@ query:
 `GeneratedField` fails Django's database system checks, which `migrate` runs: Turso's
 generated columns are experimental and off by default.
 
+Division by zero, including `Cot(0)` and dividing a duration, returns `NULL`, as in
+SQLite and Turso.
+
 A raw cursor returns date and time columns as the stored text, where Django's sqlite3
 backend returns `date`, `datetime` and `time` objects: Turso's drivers report no
 declared column types for Django to convert by.
