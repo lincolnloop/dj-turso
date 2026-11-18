@@ -86,6 +86,28 @@ def test_refused_request_raises_with_answer(
     )
 
 
+def test_sweep_raises_on_refused_deletion(
+    httpserver: pytest_httpserver.HTTPServer,
+) -> None:
+    stale_at = int(time.time()) - utils.STALE_TEST_DATABASE_AGE - 60
+    name = f"djturso-test-{stale_at}-0a1b2c3d"
+    expect_listing(httpserver, [name])
+    expect_deletion(httpserver, name).respond_with_data(
+        '{"error":"token contains an invalid number of segments"}',
+        status=401,
+        content_type="application/json",
+    )
+    client = make_client(httpserver)
+
+    with pytest.raises(utils.PlatformRequestError) as exc_info:
+        client.delete_stale_test_databases("dj-turso-tests")
+
+    assert str(exc_info.value) == (
+        f"DELETE {DATABASES_PATH}/{name} answered HTTP status 401: "
+        '{"error":"token contains an invalid number of segments"}'
+    )
+
+
 # ---
 
 
