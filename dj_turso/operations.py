@@ -158,8 +158,6 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
         self.check_time_zone(tzname)
         return fill_template(DATETIME_CAST_TIME_TEMPLATE, value=(sql, params))
 
-    # Values are stored in the database time zone, and Turso's date functions know
-    # no other: any conversion would need a time zone database.
     # Date arithmetic repeats its operands, with their parameters, so the compiler
     # writes it with get_date_arithmetic_sql(). sqlite3's raises for the rest.
     def combine_duration_expression(
@@ -185,7 +183,8 @@ class DatabaseOperations(sqlite_operations.DatabaseOperations):
             rhs=rhs,
         )
 
-    # Django passes no tzname without USE_TZ.
+    # Turso's date functions know only the database time zone, which values are stored
+    # in. Django passes no tzname without USE_TZ.
     def check_time_zone(self, tzname: str | None) -> None:
         database_tzname = self.connection.timezone_name
         if tzname is not None and tzname != database_tzname:
