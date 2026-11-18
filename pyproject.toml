@@ -104,7 +104,6 @@ source = "vcs"
 [tool.mypy]
 exclude = [
   "^\\.tox/",
-  "^bench/",
   "^build/",
   "^dist/",
   "^examples/",
@@ -126,7 +125,6 @@ DJANGO_SETTINGS_MODULE = "tests.vendor.settings"
 addopts = [
   "--cov",
   "--cov-report=xml",
-  "--ignore=bench",
   "--ignore=reference",
   "--ignore=tests/core",
   "--ignore=tests/tooling",
@@ -149,7 +147,7 @@ timeout = "120"
 xfail_strict = true
 
 [tool.ruff]
-extend-exclude = ["bench", "reference", "tests/vendor/django"]
+extend-exclude = ["reference", "tests/vendor/django"]
 target-version = "py312"
 
 [tool.ruff.lint]
