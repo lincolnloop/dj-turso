@@ -81,7 +81,7 @@ def test_doubled_percent_collapses_with_params(
     ],
 )
 def test_python_value_binds_as_sqlite_storage_form(
-    stored: object, driver_target: base.DatabaseWrapper, value: t.Any
+    driver_target: base.DatabaseWrapper, stored: object, value: t.Any
 ) -> None:
     with driver_target.cursor() as cursor:
         cursor.execute("SELECT %s", [value])
