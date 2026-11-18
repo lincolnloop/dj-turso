@@ -1,11 +1,14 @@
+import concurrent.futures
 import importlib.metadata
 import pathlib
 
+import django.db
 import django.db.utils
 import pytest
 import pytest_django
 
 from dj_turso import base
+from tests.core import models
 
 
 def test_engine_identifies_as_turso_on_sqlite_vendor(
@@ -124,3 +127,59 @@ def test_init_command_runs_after_connection_setup(
     connection.close()
 
     assert rows == [(0,)]
+
+
+# Django's sqlite3 backend waits on a locked database as long as stdlib sqlite3's
+# connect() timeout, 5 seconds unless OPTIONS says otherwise.
+@pytest.mark.parametrize(
+    ("busy_timeout", "options"),
+    [
+        pytest.param(5000, {}, id="default"),
+        pytest.param(250, {"timeout": 0.25}, id="option"),
+    ],
+)
+def test_local_connection_waits_on_lock_for_timeout(
+    busy_timeout: int,
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    options: dict[str, float],
+    tmp_path: pathlib.Path,
+) -> None:
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": str(tmp_path / "default.db"),
+                "OPTIONS": options,
+            }
+        }
+    )
+    connection = handler["default"]
+
+    with django_db_blocker.unblock(), connection.cursor() as cursor:
+        cursor.execute("PRAGMA busy_timeout")
+        rows = cursor.fetchall()
+    connection.close()
+
+    assert rows == [(busy_timeout,)]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_threads_share_database_file() -> None:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(create_tag_in_thread, name) for name in ["first", "second"]
+        ]
+        for future in futures:
+            future.result()
+
+    names = models.Tag.objects.order_by("name").values_list("name", flat=True)
+
+    assert list(names) == ["first", "second"]
+
+
+# ---
+
+
+def create_tag_in_thread(name: str) -> None:
+    models.Tag.objects.create(name=name)
+    django.db.connection.close()

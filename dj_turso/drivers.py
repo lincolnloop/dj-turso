@@ -79,7 +79,14 @@ def get_database_module(name: str) -> DatabaseModule:
         return DatabaseModule(
             turso_serverless, session.connect, session.is_usable, session.set_up_session
         )
-    return DatabaseModule(turso, turso.connect, is_always_usable, set_up_local_session)
+    return DatabaseModule(turso, connect_local, is_always_usable, set_up_local_session)
+
+
+# stdlib sqlite3's connect() timeout, seconds to wait on a lock, which pyturso's lacks.
+def connect_local(*, timeout: float = 5.0, **kwargs: t.Any) -> turso.Connection:
+    connection = turso.connect(**kwargs)
+    connection.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)}")
+    return connection
 
 
 # Local files have no link to lose.
