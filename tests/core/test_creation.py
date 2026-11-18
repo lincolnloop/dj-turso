@@ -1,10 +1,12 @@
 import collections.abc
+import concurrent.futures
 import errno
 import os
 import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 import typing as t
 
 import django.db
@@ -59,23 +61,83 @@ def register_database(
         pytest.param("https://example.invalid", id="url"),
     ],
 )
-def test_test_database_defaults_to_memory(
+def test_test_database_defaults_to_temporary_file(
     monkeypatch: pytest.MonkeyPatch,
     name: str,
     register_database: RegisterDatabase,
     tmp_path: pathlib.Path,
 ) -> None:
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     connection = register_database("creation", {"ENGINE": "dj_turso", "NAME": name})
 
     test_name = connection.creation.create_test_db(verbosity=0)
     with connection.cursor() as cursor:
         cursor.execute("SELECT name FROM sqlite_master WHERE name = 'core_tag'")
         rows = cursor.fetchall()
+    listing = sorted(path.name for path in tmp_path.iterdir())
     connection.creation.destroy_test_db(name, verbosity=0)
 
-    assert test_name == ":memory:"
+    assert test_name == str(tmp_path / f"test_creation_{os.getpid()}.db")
     assert rows == [("core_tag",)]
+    assert listing == [
+        f"test_creation_{os.getpid()}.db",
+        f"test_creation_{os.getpid()}.db-wal",
+    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
+def test_threads_share_default_test_database(
+    monkeypatch: pytest.MonkeyPatch,
+    register_database: RegisterDatabase,
+    tmp_path: pathlib.Path,
+) -> None:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    connection = register_database(
+        "creation", {"ENGINE": "dj_turso", "NAME": "default.db"}
+    )
+    connection.creation.create_test_db(verbosity=0)
+    models.Tag.objects.using("creation").create(name="committed")
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        names = executor.submit(get_thread_tag_names, "creation").result()
+    connection.creation.destroy_test_db("default.db", verbosity=0)
+
+    assert names == ["committed"]
+
+
+def test_runner_threads_share_default_test_database(tmp_path: pathlib.Path) -> None:
+    child = (
+        "import django, django.core.management;"
+        "django.setup();"
+        "django.core.management.call_command('test', 'tests.core.thread_cases')"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", child],
+        capture_output=True,
+        check=False,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "tests.core.settings",
+            "PYTHONPATH": str(REPOSITORY_ROOT),
+            "TMPDIR": str(tmp_path),
+        },
+        text=True,
+    )
+
+    assert re.sub(r"in [0-9.]+s", "in 0s", completed.stderr) == (
+        "Creating test database for alias 'default'...\n"
+        "Destroying old test database for alias 'default'...\n"
+        "...\n"
+        "----------------------------------------------------------------------\n"
+        "Ran 3 tests in 0s\n"
+        "\n"
+        "OK\n"
+        "Destroying test database for alias 'default'...\n"
+    )
+    assert completed.returncode == 0
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
 def test_explicit_test_name_is_used(
@@ -98,9 +160,12 @@ def test_explicit_test_name_is_used(
     assert listing == ["explicit.db", "explicit.db-wal"]
 
 
-def test_in_memory_name_tests_in_memory(register_database: RegisterDatabase) -> None:
+def test_in_memory_test_name_tests_in_memory(
+    register_database: RegisterDatabase,
+) -> None:
     connection = register_database(
-        "creation", {"ENGINE": "dj_turso", "NAME": ":memory:"}
+        "creation",
+        {"ENGINE": "dj_turso", "NAME": ":memory:", "TEST": {"NAME": ":memory:"}},
     )
 
     test_name = connection.creation.create_test_db(verbosity=0)
@@ -308,6 +373,59 @@ def test_clone_refuses_url_test_database(register_database: RegisterDatabase) ->
     )
 
 
+@pytest.mark.parametrize(
+    "start_method",
+    [
+        pytest.param("fork", id="fork"),
+        pytest.param("forkserver", id="forkserver"),
+        pytest.param("spawn", id="spawn"),
+    ],
+)
+def test_parallel_run_gives_each_worker_a_clone(
+    start_method: str, tmp_path: pathlib.Path
+) -> None:
+    child = (
+        "import multiprocessing, os, tempfile, django, django.core.management;"
+        f"multiprocessing.set_start_method({start_method!r});"
+        "os.environ['WORKER_DATABASE_NAME'] = os.path.join("
+        "tempfile.gettempdir(), f'test_default_{os.getpid()}_{{worker_id}}.db');"
+        "django.setup();"
+        "django.core.management.call_command("
+        "'test', 'tests.core.parallel_cases', parallel=2)"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", child],
+        capture_output=True,
+        check=False,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "tests.core.settings",
+            "PYTHONPATH": str(REPOSITORY_ROOT),
+            "TMPDIR": str(tmp_path),
+        },
+        text=True,
+    )
+
+    assert completed.returncode == 0
+    assert re.sub(r"in [0-9.]+s", "in 0s", completed.stderr) == (
+        "Creating test database for alias 'default'...\n"
+        "Destroying old test database for alias 'default'...\n"
+        "Cloning test database for alias 'default'...\n"
+        "Cloning test database for alias 'default'...\n"
+        "..\n"
+        "----------------------------------------------------------------------\n"
+        "Ran 2 tests in 0s\n"
+        "\n"
+        "OK\n"
+        "Destroying test database for alias 'default'...\n"
+        "Destroying test database for alias 'default'...\n"
+        "Destroying test database for alias 'default'...\n"
+    )
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
 # Fork copies the in-memory test database; forkserver and spawn open a clone file.
 @pytest.mark.parametrize(
     ("start_method", "worker_database_name"),
@@ -317,13 +435,14 @@ def test_clone_refuses_url_test_database(register_database: RegisterDatabase) ->
         pytest.param("spawn", "default_{worker_id}.sqlite3", id="spawn"),
     ],
 )
-def test_parallel_run_gives_each_worker_a_clone(
+def test_parallel_run_clones_in_memory_test_database(
     start_method: str, tmp_path: pathlib.Path, worker_database_name: str
 ) -> None:
     child = (
-        "import multiprocessing, django, django.core.management;"
+        "import multiprocessing, django, django.core.management, django.db;"
         f"multiprocessing.set_start_method({start_method!r});"
         "django.setup();"
+        "django.db.connections['default'].settings_dict['TEST']['NAME'] = ':memory:';"
         "django.core.management.call_command("
         "'test', 'tests.core.parallel_cases', parallel=2)"
     )
@@ -493,6 +612,12 @@ def get_table_names(path: pathlib.Path) -> list[str]:
     table_names: list[str] = connection.introspection.table_names()
     connection.close()
     return table_names
+
+
+def get_thread_tag_names(alias: str) -> list[str]:
+    names = list(models.Tag.objects.using(alias).values_list("name", flat=True))
+    django.db.connections[alias].close()
+    return names
 
 
 def get_tag_names(path: pathlib.Path) -> list[str]:

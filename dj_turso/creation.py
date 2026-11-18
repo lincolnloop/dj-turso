@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import pathlib
+import tempfile
 import typing as t
 
 from django.db.backends.sqlite3 import creation as sqlite_creation
@@ -46,10 +47,14 @@ class DatabaseCreation(SqliteDatabaseCreation):
         keepdb = keepdb or drivers.is_remote_name(self.connection.settings_dict["NAME"])
         super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
 
-    # pyturso has no shared cache: Django's memorydb URI would open a file of that name.
+    # pyturso has no shared cache, so each connection to ":memory:" is a database of its
+    # own: a temporary file is the one database every thread connects to.
     def _get_test_db_name(self) -> str:
         test_name: str | None = self.connection.settings_dict["TEST"]["NAME"]
-        return test_name or ":memory:"
+        return test_name or str(
+            pathlib.Path(tempfile.gettempdir())
+            / f"test_{self.connection.alias}_{os.getpid()}.db"
+        )
 
     # sqlite3's clone with VACUUM INTO in place of shutil.copy() and backup(): a copy
     # misses the -wal file, and pyturso has no backup().
