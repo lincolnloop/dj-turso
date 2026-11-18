@@ -226,6 +226,13 @@ class KeepAliveConnection(turso_serverless.Connection):
         super().__init__(session, isolation_level=isolation_level)
         self.session = session
 
+    # The driver skips ROLLBACK once the stream reads autocommit; a lost transaction
+    # must fail it, as a broken PostgreSQL connection does, so Django closes this one.
+    def rollback(self) -> None:
+        if self.session.transaction_lost:
+            raise LostTransactionError
+        super().rollback()
+
 
 # Django's sqlite3 backend names the target "database"; turso_serverless, "url".
 def connect(

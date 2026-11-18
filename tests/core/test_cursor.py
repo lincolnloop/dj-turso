@@ -263,3 +263,22 @@ def test_returning_cursor_keeps_driver_metadata(
     assert first_rows == [(1, "a")]
     assert second_rows == [(2, "b")]
     assert rest == [(3, "c")]
+
+
+@pytest.mark.usefixtures("item_table")
+def test_rollback_discards_writes_since_autocommit_was_turned_off(
+    driver_target: base.DatabaseWrapper,
+) -> None:
+    with driver_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+        cursor.execute("INSERT INTO item VALUES ('kept')")
+    driver_target.set_autocommit(False)
+    with driver_target.cursor() as cursor:
+        cursor.execute("INSERT INTO item VALUES ('discarded')")
+    driver_target.rollback()
+    driver_target.set_autocommit(True)
+    with driver_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("kept",)]
