@@ -195,3 +195,13 @@ server:
 ```shell
 uvx --with tox-uv tox
 ```
+
+The Cloud tests run against a Turso Cloud database named by `TURSO_DATABASE_URL` and
+`TURSO_AUTH_TOKEN`, and skip without them. CI passes them from repository secrets of the
+same names, so they skip on pull requests from forks. Locally, export them from a `.env`
+file:
+
+```shell
+set -a; . ./.env; set +a
+uvx --with tox-uv tox
+```

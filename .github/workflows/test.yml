@@ -45,6 +45,13 @@ jobs:
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Run tox
         run: uvx --with tox-uv tox -e "${{ matrix.env }}"
+        # One job only: the Cloud database is shared, and the tests lock it only
+        # within a runner. Without the secrets, as on a fork, the Cloud tests skip.
+        env:
+          TURSO_DATABASE_URL: >-
+            ${{ matrix.env == 'dev' && secrets.TURSO_DATABASE_URL || '' }}
+          TURSO_AUTH_TOKEN: >-
+            ${{ matrix.env == 'dev' && secrets.TURSO_AUTH_TOKEN || '' }}
       - name: Upload coverage to Codecov
         if: ${{ (success() || failure()) && !contains(matrix.env, 'mypy') }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
