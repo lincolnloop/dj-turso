@@ -1,0 +1,89 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [":configMigration", "group:monorepos"],
+  "description": "Conventional Commits titles are required by the pr-title workflow, so semanticCommits is pinned on rather than left to auto-detection.",
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "dependencyDashboard": {
+    "enabled": true,
+    "osvVulnerabilitySummary": "all"
+  },
+  "osvVulnerabilityAlerts": true,
+  "minimumReleaseAge": "7 days",
+  "rangeStrategy": "update-lockfile",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "dependencyDashboardApproval": true,
+    "schedule": ["at any time"]
+  },
+  "poetry": {
+    "enabled": false
+  },
+  "pre-commit": {
+    "enabled": true
+  },
+  "prConcurrentLimit": 1,
+  "prHourlyLimit": 0,
+  "packageRules": [
+    {
+      "description": "Hard-pin build backend + dev deps to exact versions. Runtime dependencies stay ranges: they are what a project installing dj-turso resolves against.",
+      "matchDepTypes": ["build-system.requires", "dependency-groups"],
+      "rangeStrategy": "pin",
+      "groupName": "dev dependencies"
+    },
+    {
+      "description": "The polls example depends on dj-turso by path, so its uv.lock records the ROOT manifest's requires-dev. Any root dependency bump makes it stale and the examples job, which runs `uv run pytest`, re-resolves a set nobody reviewed. Renovate's uv manager only refreshes the lockfile beside the manifest it edited, so re-lock it in the same branch.",
+      "matchFileNames": ["pyproject.toml"],
+      "postUpgradeTasks": {
+        "commands": ["uv lock --project examples/polls"],
+        "fileFilters": ["examples/*/uv.lock"],
+        "executionMode": "branch",
+        "installTools": {
+          "python": {},
+          "uv": {}
+        }
+      }
+    },
+    {
+      "matchPackageNames": ["hatch*"],
+      "groupName": "hatch"
+    },
+    {
+      "matchPackageNames": ["pytest", "pytest-*"],
+      "groupName": "pytest"
+    },
+    {
+      "matchPackageNames": ["mypy", "django-stubs"],
+      "groupName": "type checking"
+    },
+    {
+      "description": "Turso releases carry the upstream fixes dj-turso waits on, so they skip the cooloff, in both places (see [tool.uv.exclude-newer-package]). Merged by hand: dj-turso imports pyturso's private turso._turso module, the runtime ranges cap the minor version, and a release that fixes a tracked upstream bug turns its strict xfail in tests/index.toml into an XPASS to clean up.",
+      "matchPackageNames": ["pyturso", "turso-serverless"],
+      "groupName": "turso",
+      "minimumReleaseAge": "0",
+      "automerge": false
+    },
+    {
+      "description": "uv has no release timestamps; skip cooloff.",
+      "matchPackageNames": ["ghcr.io/astral-sh/**"],
+      "minimumReleaseAge": "0"
+    },
+    {
+      "description": "Bump uv with Python.",
+      "matchPackageNames": ["python", "ghcr.io/astral-sh/uv"],
+      "groupName": "python runtime"
+    },
+    {
+      "matchManagers": ["pre-commit"],
+      "groupName": "pre-commit hooks"
+    },
+    {
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "prPriority": -1
+    }
+  ]
+}
