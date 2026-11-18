@@ -150,6 +150,9 @@ class CountingProxy:
             self.response_delay = seconds
 
     def close(self) -> None:
+        # Closing alone does not wake a blocked accept() on Linux.
+        with contextlib.suppress(OSError):
+            self.listener.shutdown(socket.SHUT_RDWR)
         self.listener.close()
         self.drop_connections()
 
@@ -218,6 +221,9 @@ class TunnelProxy:
         threading.Thread(target=self.accept_connections, daemon=True).start()
 
     def close(self) -> None:
+        # Closing alone does not wake a blocked accept() on Linux.
+        with contextlib.suppress(OSError):
+            self.listener.shutdown(socket.SHUT_RDWR)
         self.listener.close()
         with self.lock:
             sockets = list(self.open_sockets)
