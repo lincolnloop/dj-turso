@@ -40,22 +40,24 @@ FOREIGN_KEYS_ASSIGNMENT_REGEX = re.compile(
 class LostTransactionError(
     exceptions.TursoBackendError, turso_serverless.OperationalError
 ):
-    message = (
-        "Lost the connection to the remote database inside a transaction: whether it "
-        "committed is unknown, and this connection cannot be used again."
-    )
-
     def __init__(self) -> None:
-        super().__init__(self.message)
+        super().__init__(self.get_message())
+
+    def get_message(self) -> str:
+        return (
+            "Lost the connection to the remote database inside a transaction: whether "
+            "it committed is unknown, and this connection cannot be used again."
+        )
 
 
 class IdleTransactionError(LostTransactionError):
-    message = (
-        "The remote transaction was idle for over "
-        f"{STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN} seconds, near the server's "
-        f"{STREAM_IDLE_TIMEOUT} second limit, so it was abandoned: it did not commit, "
-        "and this connection cannot be used again."
-    )
+    def get_message(self) -> str:
+        return (
+            "The remote transaction was idle for over "
+            f"{STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN} seconds, near the server's "
+            f"{STREAM_IDLE_TIMEOUT} second limit, so it was abandoned: it did not "
+            "commit, and this connection cannot be used again."
+        )
 
 
 # Overrides the private Session._post and _reset_stream and reads _base_url, _baton
