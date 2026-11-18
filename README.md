@@ -150,6 +150,10 @@ query:
 `GeneratedField` fails Django's system checks: Turso's generated columns are
 experimental and off by default.
 
+A raw cursor returns date and time columns as the stored text, where Django's sqlite3
+backend returns `date`, `datetime` and `time` objects: Turso's drivers report no
+declared column types for Django to convert by.
+
 ## Known Turso bugs
 
 dj-turso does not work around these yet:
@@ -162,8 +166,6 @@ dj-turso does not work around these yet:
   constraint checks can be off where Django expects them on.
 - Renaming a column to a name that differs only in case is rejected as a duplicate
   column.
-- A raw cursor returns date and time columns as the stored text, since pyturso reports
-  no declared column types for Django to convert by.
 
 ## Running the tests
 

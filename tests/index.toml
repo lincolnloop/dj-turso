@@ -149,17 +149,6 @@ tests = [
 ]
 
 [[cause]]
-issue = "unfiled"
-kind = "upstream-bug"
-name = "no declared column types on raw cursor results"
-reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; pyturso exposes no declared column types, so a raw cursor returns the stored text"
-tests = [
-  "tests/vendor/django/schema/tests.py::SchemaTests::test_add_datefield_and_datetimefield_use_effective_default",
-  "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_cursor_execute_returns_naive_datetime",
-  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_cursor_execute_returns_naive_datetime",
-]
-
-[[cause]]
 kind = "turso-limitation"
 match = 'Locking error: Failed locking file .+\. File is locked by another process'
 name = "second process cannot open the test database"
@@ -167,4 +156,16 @@ raises = "builtins.AssertionError"
 reason = "A subprocess the test starts opens the test database file, which Turso locks to one process"
 tests = [
   "tests/vendor/django/migrations/test_loader.py::LoaderTests::test_loading_order_does_not_create_circular_dependency",
+]
+
+[[cause]]
+kind = "turso-limitation"
+match = '''^'\d{4}-\d\d-\d\d \d\d:\d\d:\d\d' != datetime\.datetime\(|^'str' object has no attribute 'date'$'''
+name = "no declared column types on raw cursor results"
+raises = "builtins.Exception"
+reason = "Django's sqlite3 backend converts date and time columns by declared type through stdlib detect_types; pyturso has no detect_types and reports no declared column types, so a raw cursor returns the stored text"
+tests = [
+  "tests/vendor/django/schema/tests.py::SchemaTests::test_add_datefield_and_datetimefield_use_effective_default",
+  "tests/vendor/django/timezones/tests.py::LegacyDatabaseTests::test_cursor_execute_returns_naive_datetime",
+  "tests/vendor/django/timezones/tests.py::NewDatabaseTests::test_cursor_execute_returns_naive_datetime",
 ]
