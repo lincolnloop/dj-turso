@@ -200,10 +200,23 @@ server:
 uvx --with tox-uv tox
 ```
 
-The Cloud tests run against a Turso Cloud database named by `TURSO_DATABASE_URL` and
-`TURSO_AUTH_TOKEN`, and skip without them. CI passes them from repository secrets of the
-same names, so they skip on pull requests from forks. Locally, export them from a `.env`
-file:
+The Cloud tests create a Turso Cloud database for each test process, and delete it when
+the process ends. They need a
+[Platform API token](https://docs.turso.tech/api-reference) that can create, read and
+delete databases in a group and mint their tokens, and skip without one:
+
+```shell
+TURSO_API_TOKEN=...
+TURSO_ORG=my-organization
+TURSO_TEST_GROUP=my-test-group
+```
+
+Each database is named `djturso-test-` and the time it was created, and a run deletes
+any in the group more than an hour old, left by a run that crashed.
+
+CI passes `TURSO_API_TOKEN` from a repository secret, and `TURSO_ORG` and
+`TURSO_TEST_GROUP` from repository variables, so the Cloud tests skip on pull requests
+from forks. Locally, export them from a `.env` file:
 
 ```shell
 set -a; . ./.env; set +a
