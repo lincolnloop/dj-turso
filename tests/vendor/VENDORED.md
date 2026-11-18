@@ -40,7 +40,7 @@ Django's sqlite3 `django_test_skips` and `django_test_expected_failures` apply a
 print the counts:
 
 ```sh
-uv run python -m scripts.sync_index --junit junit-vendor-pyturso.xml --target pyturso
+uv run python -m scripts.sync_index --junit junit-vendor-pyturso.xml
 uv run python -m scripts.report_index
 ```
 
