@@ -89,6 +89,10 @@ class KeepAliveSession(serverless_session.Session):
         self.stream_was_reset = False
         try:
             result = super().execute_stmt(sql, args, named_args, want_rows)
+        # The driver raises a parameter it cannot encode as bare TypeError, which
+        # Django would not wrap; stdlib sqlite3 raises ProgrammingError.
+        except TypeError as exc:
+            raise turso_serverless.ProgrammingError(str(exc)) from exc
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
                 self.lost_transaction_error = LostTransactionError

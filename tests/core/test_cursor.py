@@ -6,6 +6,7 @@ import uuid
 
 import django.db
 import pytest
+import turso_serverless
 from django.db import models as django_models
 from django.db.models import expressions
 
@@ -122,26 +123,48 @@ def test_integer_choices_filter_binds_as_integer() -> None:
 
 
 # Like stdlib sqlite3, the drivers bind no UUID; Django's UUIDField stores hex itself.
-def test_uuid_parameter_is_not_bound(driver_target: base.DatabaseWrapper) -> None:
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(object(), id="object"),
+        pytest.param(uuid.UUID("12345678-1234-5678-1234-567812345678"), id="uuid"),
+    ],
+)
+def test_unbindable_parameter_is_not_bound(
+    driver_target: base.DatabaseWrapper, value: t.Any
+) -> None:
     error_class = {
-        "cloud": TypeError,
+        "cloud": django.db.ProgrammingError,
         "pyturso": django.db.OperationalError,
-        "stub": TypeError,
+        "stub": django.db.ProgrammingError,
     }[driver_target.alias]
 
     with driver_target.cursor() as cursor, pytest.raises(error_class) as excinfo:
-        cursor.execute("SELECT %s", [uuid.UUID("12345678-1234-5678-1234-567812345678")])
+        cursor.execute("SELECT %s", [value])
 
     assert type(excinfo.value) is error_class
     assert (
         str(excinfo.value)
         == {
-            "cloud": "Unsupported value type: UUID",
+            "cloud": f"Unsupported value type: {type(value).__name__}",
             "pyturso": "unexpected parameter value, only None, numbers, strings and "
             "bytes are supported",
-            "stub": "Unsupported value type: UUID",
+            "stub": f"Unsupported value type: {type(value).__name__}",
         }[driver_target.alias]
     )
+
+
+def test_unbindable_remote_parameter_error_is_chained_from_type_error(
+    remote_target: base.DatabaseWrapper,
+) -> None:
+    with (
+        remote_target.cursor() as cursor,
+        pytest.raises(django.db.ProgrammingError) as excinfo,
+    ):
+        cursor.execute("SELECT %s", [uuid.UUID("12345678-1234-5678-1234-567812345678")])
+
+    assert type(excinfo.value.__cause__) is turso_serverless.ProgrammingError
+    assert type(excinfo.value.__cause__.__cause__) is TypeError
 
 
 @pytest.mark.usefixtures("item_table")
