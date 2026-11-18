@@ -4,6 +4,7 @@ import pathlib
 import tempfile
 import typing as t
 
+from django.db.backends.base import base
 from django.db.backends.sqlite3 import creation as sqlite_creation
 
 from dj_turso import drivers
@@ -29,6 +30,10 @@ else:
 
 
 class DatabaseCreation(SqliteDatabaseCreation):
+    def __init__(self, connection: base.BaseDatabaseWrapper) -> None:
+        super().__init__(connection)
+        self.default_test_db_name: str | None = None
+
     # dj-turso never creates or destroys a remote test database: Django runs these as
     # with keepdb. create_test_db() stays Django's, for its warnings' stack level.
     def _create_test_db(
@@ -48,13 +53,18 @@ class DatabaseCreation(SqliteDatabaseCreation):
         super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
 
     # pyturso has no shared cache, so each connection to ":memory:" is a database of its
-    # own: a temporary file is the one database every thread connects to.
+    # own: a temporary file, in a private directory, is the one every thread opens.
     def _get_test_db_name(self) -> str:
         test_name: str | None = self.connection.settings_dict["TEST"]["NAME"]
-        return test_name or str(
-            pathlib.Path(tempfile.gettempdir())
-            / f"test_{self.connection.alias}_{os.getpid()}.db"
-        )
+        if test_name:
+            return test_name
+        if self.default_test_db_name is None:
+            alias = self.connection.alias
+            directory = tempfile.mkdtemp(prefix=f"test_{alias}_")
+            self.default_test_db_name = str(
+                pathlib.Path(directory) / f"test_{alias}.db"
+            )
+        return self.default_test_db_name
 
     # sqlite3's clone with VACUUM INTO in place of shutil.copy() and backup(): a copy
     # misses the -wal file, and pyturso has no backup().
@@ -105,6 +115,8 @@ class DatabaseCreation(SqliteDatabaseCreation):
     def _destroy_test_db(self, test_database_name: str, verbosity: int) -> None:
         if not self.is_in_memory_db(test_database_name):
             remove_database_files(test_database_name)
+        if test_database_name == self.default_test_db_name:
+            pathlib.Path(test_database_name).parent.rmdir()
 
 
 def remove_database_files(name: str) -> None:

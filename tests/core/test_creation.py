@@ -4,6 +4,7 @@ import errno
 import os
 import pathlib
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -74,15 +75,15 @@ def test_test_database_defaults_to_temporary_file(
     with connection.cursor() as cursor:
         cursor.execute("SELECT name FROM sqlite_master WHERE name = 'core_tag'")
         rows = cursor.fetchall()
-    listing = sorted(path.name for path in tmp_path.iterdir())
+    [directory] = tmp_path.iterdir()
+    mode = stat.S_IMODE(directory.stat().st_mode)
+    listing = sorted(path.name for path in directory.iterdir())
     connection.creation.destroy_test_db(name, verbosity=0)
 
-    assert test_name == str(tmp_path / f"test_creation_{os.getpid()}.db")
+    assert test_name == str(directory / "test_creation.db")
+    assert mode == 0o700
     assert rows == [("core_tag",)]
-    assert listing == [
-        f"test_creation_{os.getpid()}.db",
-        f"test_creation_{os.getpid()}.db-wal",
-    ]
+    assert listing == ["test_creation.db", "test_creation.db-wal"]
     assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
@@ -388,7 +389,7 @@ def test_parallel_run_gives_each_worker_a_clone(
         "import multiprocessing, os, tempfile, django, django.core.management;"
         f"multiprocessing.set_start_method({start_method!r});"
         "os.environ['WORKER_DATABASE_NAME'] = os.path.join("
-        "tempfile.gettempdir(), f'test_default_{os.getpid()}_{{worker_id}}.db');"
+        "tempfile.gettempdir(), '{directory}', 'test_default_{worker_id}.db');"
         "django.setup();"
         "django.core.management.call_command("
         "'test', 'tests.core.parallel_cases', parallel=2)"
