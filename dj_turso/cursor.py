@@ -15,7 +15,8 @@ from dj_turso import drivers, exceptions
 RETURNING_REGEX = re.compile(r"\bRETURNING\b", re.IGNORECASE)
 
 # SQLite's INTEGER is signed 64-bit.
-INTEGER_RANGE = range(-(2**63), 2**63)
+SMALLEST_INTEGER = -(2**63)
+LARGEST_INTEGER = 2**63 - 1
 
 
 class TursoCursorWrapper:
@@ -113,7 +114,7 @@ def adapt_params(params: t.Any) -> t.Any:
 # an integer past 64 bits as a float, where stdlib sqlite3 raises.
 def adapt_value(value: object) -> object:
     match value:
-        case int() if value not in INTEGER_RANGE:
+        case int() if not SMALLEST_INTEGER <= value <= LARGEST_INTEGER:
             raise exceptions.IntegerOverflowError
         case dt.datetime():
             return value.isoformat(" ")

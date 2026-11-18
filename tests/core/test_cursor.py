@@ -1,12 +1,26 @@
 import datetime as dt
 import decimal
+import enum
 import typing as t
 import uuid
 
 import django.db
 import pytest
+from django.db import models as django_models
+from django.db.models import expressions
 
 from dj_turso import base
+from tests.core import models
+
+
+class Priority(enum.IntEnum):
+    HIGH = 3
+    BEYOND_64_BITS = 2**63
+
+
+class Level(django_models.IntegerChoices):
+    LOW = 1
+    HIGH = 2
 
 
 def test_format_placeholders_bind_positionally(
@@ -62,6 +76,7 @@ def test_doubled_percent_collapses_with_params(
         pytest.param("1.10", decimal.Decimal("1.10"), id="decimal"),
         pytest.param(2**63 - 1, 2**63 - 1, id="largest-integer"),
         pytest.param(-(2**63), -(2**63), id="smallest-integer"),
+        pytest.param(3, Priority.HIGH, id="int-enum"),
         pytest.param(b"ab", memoryview(b"ab"), id="memoryview"),
         pytest.param(
             "12345678-1234-5678-1234-567812345678",
@@ -85,6 +100,7 @@ def test_python_value_binds_as_sqlite_storage_form(
     [
         pytest.param(2**63, id="above-64-bits"),
         pytest.param(-(2**63) - 1, id="below-64-bits"),
+        pytest.param(Priority.BEYOND_64_BITS, id="int-enum-above-64-bits"),
     ],
 )
 def test_integer_beyond_64_bits_raises_overflow_error(
@@ -94,6 +110,20 @@ def test_integer_beyond_64_bits_raises_overflow_error(
         cursor.execute("SELECT %s", [value])
 
     assert str(excinfo.value) == "Python int too large to convert to SQLite INTEGER"
+
+
+@pytest.mark.django_db
+def test_integer_choices_filter_binds_as_integer() -> None:
+    models.Counter.objects.create(value=1, mask=0)
+    models.Counter.objects.create(value=2, mask=0)
+
+    values = list(
+        models.Counter.objects.filter(
+            value=expressions.RawSQL("%s", [Level.HIGH])
+        ).values_list("value", flat=True)
+    )
+
+    assert values == [2]
 
 
 @pytest.mark.usefixtures("item_table")
