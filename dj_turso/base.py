@@ -70,7 +70,7 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
         try:
             return self.turso_version
         except db_utils.OperationalError as exc:
-            if not str(exc).endswith("no such function: turso_version"):
+            if "no such function: turso_version" not in str(exc):
                 raise
             raise exceptions.EngineNotSupportedError from exc
 

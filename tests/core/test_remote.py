@@ -193,16 +193,26 @@ def test_error_status_without_json_body_raises_operational_error(
 # libSQL, as sqld and Turso Cloud's databases of type SQLite run, has no
 # turso_version(). Django checks the database once per alias per process: the test's
 # own alias.
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(
+            "SQL input error: no such function: turso_version (at offset 7)",
+            id="sqld",
+        ),
+        pytest.param("SQLite error: no such function: turso_version", id="cloud"),
+    ],
+)
 def test_engine_without_turso_version_raises_not_supported_error(
     django_db_blocker: pytest_django.DjangoDbBlocker,
     httpserver: pytest_httpserver.HTTPServer,
+    message: str,
     request: pytest.FixtureRequest,
 ) -> None:
     utils.expect_stream_start(httpserver)
     httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
         '{"baton": "baton", "base_url": null}\n'
-        '{"type": "step_error", "step": 0, "error": {"message": "Tursodb error: '
-        'Parse error: no such function: turso_version"}}\n'
+        '{"type": "step_error", "step": 0, "error": {"message": "' + message + '"}}\n'
     )
     handler = django.db.utils.ConnectionHandler(
         {
