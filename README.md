@@ -1,5 +1,14 @@
 # dj-turso
 
+<!-- prettier-ignore-start -->
+[![CI](https://github.com/lincolnloop/dj-turso/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/lincolnloop/dj-turso/actions/workflows/test.yml?query=branch%3Amain+event%3Apush)
+[![Coverage](https://img.shields.io/codecov/c/github/lincolnloop/dj-turso.svg)](https://codecov.io/gh/lincolnloop/dj-turso)
+[![PyPI](https://img.shields.io/pypi/v/dj-turso.svg)](https://pypi.org/project/dj-turso/)
+[![Python versions](https://img.shields.io/pypi/pyversions/dj-turso.svg)](https://pypi.org/project/dj-turso/)
+[![Django versions](https://img.shields.io/pypi/frameworkversions/django/dj-turso.svg)](https://pypi.org/project/dj-turso/)
+[![License](https://img.shields.io/pypi/l/dj-turso.svg)](https://github.com/lincolnloop/dj-turso/blob/main/LICENSE)
+<!-- prettier-ignore-end -->
+
 Django database backend for [Turso](https://turso.tech): local database files and Turso
 Cloud through one engine.
 
