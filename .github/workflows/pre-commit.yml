@@ -22,7 +22,7 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: astral-sh/setup-uv@v10.3.3
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.GIT_REF }}
