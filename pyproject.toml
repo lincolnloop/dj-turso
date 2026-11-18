@@ -200,3 +200,9 @@ max-args = 6
 [tool.uv]
 # Mirror Renovate's minimumReleaseAge cooloff for local/CI resolution.
 exclude-newer = "7 days"
+
+# Turso is exempt, in both places (see renovate.json): its releases carry the upstream
+# fixes dj-turso waits on.
+[tool.uv.exclude-newer-package]
+pyturso = "0 days"
+turso-serverless = "0 days"

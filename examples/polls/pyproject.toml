@@ -24,6 +24,12 @@ source_dirs = ["polls", "tests"]
 [tool.uv]
 exclude-newer = "7 days"
 
+# Turso is exempt, in both places (see renovate.json): its releases carry the upstream
+# fixes dj-turso waits on.
+[tool.uv.exclude-newer-package]
+pyturso = "0 days"
+turso-serverless = "0 days"
+
 # dj-turso from the local checkout (repo root), so the example runs this branch's
 # code, not a released version.
 [tool.uv.sources]

@@ -11,6 +11,10 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
+[options.exclude-newer-package]
+pyturso = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
+turso-serverless = { timestamp = "0001-01-01T00:00:00Z", span = "PT0S" }
+
 [[package]]
 name = "argon2-cffi"
 version = "25.1.0"
