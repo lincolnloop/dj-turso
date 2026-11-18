@@ -18,8 +18,7 @@ from turso_serverless import session as serverless_session
 
 from dj_turso import exceptions
 
-# Seconds a server stream outlives its last request, per Turso's HTTP API docs: Turso
-# Cloud rolls back a transaction idle past it.
+# Seconds a server stream outlives its last request, per Turso's HTTP API docs.
 STREAM_IDLE_TIMEOUT = 10
 
 # The server's idle clock starts when its answer leaves, the client's when it lands:
@@ -41,22 +40,9 @@ class LostTransactionError(
     exceptions.TursoBackendError, turso_serverless.OperationalError
 ):
     def __init__(self) -> None:
-        super().__init__(self.get_message())
-
-    def get_message(self) -> str:
-        return (
+        super().__init__(
             "Lost the connection to the remote database inside a transaction: whether "
             "it committed is unknown, and this connection cannot be used again."
-        )
-
-
-class IdleTransactionError(LostTransactionError):
-    def get_message(self) -> str:
-        return (
-            "The remote transaction was idle for over "
-            f"{STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN} seconds, near the server's "
-            f"{STREAM_IDLE_TIMEOUT} second limit, so it was abandoned: it did not "
-            "commit, and this connection cannot be used again."
         )
 
 
@@ -69,7 +55,7 @@ class KeepAliveSession(serverless_session.Session):
         self.http_connection_origin: tuple[str, str] | None = None
         # Set while the connection is to a proxy that forwards each request whole.
         self.forward_proxy_headers: dict[str, str] | None = None
-        self.lost_transaction_error: type[LostTransactionError] | None = None
+        self.transaction_lost = False
         self.setup_statements: list[str] = []
         self.foreign_keys_statement: str | None = None
         self.starting_stream = False
@@ -98,11 +84,11 @@ class KeepAliveSession(serverless_session.Session):
             result = super().execute_stmt(sql, args, named_args, want_rows)
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
-                self.lost_transaction_error = LostTransactionError
+                self.transaction_lost = True
                 raise LostTransactionError from exc
             raise
         if in_transaction and self.stream_was_reset:
-            self.lost_transaction_error = LostTransactionError
+            self.transaction_lost = True
             raise LostTransactionError
         # Read back, not copied: inside a transaction SQLite ignores the pragma, and
         # Turso applies it.
@@ -117,20 +103,17 @@ class KeepAliveSession(serverless_session.Session):
 
     # Like a broken PostgreSQL connection, nothing runs again until Django closes it.
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
-        if self.lost_transaction_error is not None:
-            raise self.lost_transaction_error
-        # Never sent to an expired stream: Turso Cloud would answer that it rolled the
-        # transaction back, or that the stream is gone.
+        if self.transaction_lost:
+            raise LostTransactionError
+        # Outside a transaction, an idle stream is replaced, not sent to: Turso Cloud
+        # may have forgotten it. Inside one, Turso Cloud answers if it rolled it back.
         if (
             self._baton is not None
+            and self._autocommit
             and time.monotonic() - self.last_response_time
             > STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN
         ):
-            in_transaction = not self._autocommit
             self.close_stream()
-            if in_transaction:
-                self.lost_transaction_error = IdleTransactionError
-                raise IdleTransactionError
         if self._baton is None and not self.starting_stream:
             self.start_stream()
             body = body | {"baton": self._baton}
@@ -267,13 +250,13 @@ class KeepAliveConnection(turso_serverless.Connection):
     # transaction must fail both, as a broken PostgreSQL connection does, so Django
     # closes this one.
     def commit(self) -> None:
-        if self.session.lost_transaction_error is not None:
-            raise self.session.lost_transaction_error
+        if self.session.transaction_lost:
+            raise LostTransactionError
         super().commit()
 
     def rollback(self) -> None:
-        if self.session.lost_transaction_error is not None:
-            raise self.session.lost_transaction_error
+        if self.session.transaction_lost:
+            raise LostTransactionError
         super().rollback()
 
 
@@ -298,7 +281,7 @@ def set_up_session(connection: KeepAliveConnection, statements: list[str]) -> No
 
 
 def is_usable(connection: KeepAliveConnection) -> bool:
-    return connection.session.lost_transaction_error is None
+    return not connection.session.transaction_lost
 
 
 # The proxy upstream's urllib.request.urlopen would take to the origin: its host and

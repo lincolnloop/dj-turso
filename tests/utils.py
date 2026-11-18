@@ -237,8 +237,9 @@ class TunnelProxy:
 class Stream:
     connection: turso.Connection
     answered_at: float = 0.0
-    # Turso Cloud expires a stream idle after a pipeline request, not after a cursor.
-    expires: bool = False
+    # Turso Cloud expires a stream idle after a pipeline request sooner than after a
+    # cursor.
+    expires_soon: bool = False
 
 
 class HranaStub:
@@ -308,7 +309,7 @@ class HranaStub:
             for pipeline_request in body["requests"]
         ]
         closing = rolled_back or body["requests"][-1]["type"] == "close"
-        baton = self.finish_request(stream_id, stream, closing, expires=True)
+        baton = self.finish_request(stream_id, stream, closing, expires_soon=True)
         return make_json_response(
             {"baton": baton, "base_url": None, "results": results}
         )
@@ -336,7 +337,7 @@ class HranaStub:
                     },
                 ]
             )
-        baton = self.finish_request(stream_id, stream, rolled_back, expires=False)
+        baton = self.finish_request(stream_id, stream, rolled_back, expires_soon=False)
         # Turso Cloud ends the body without a replication_index terminator.
         lines = [{"baton": baton, "base_url": None}, *entries]
         return wrappers.Response(
@@ -362,8 +363,9 @@ class HranaStub:
         return None
 
     # The stream a baton names, None once forgotten, and whether its transaction was
-    # just rolled back for idling. Measured on Turso Cloud: a transaction idle past
-    # the limit is rolled back and answered so, and its stream forgotten by twice it.
+    # just rolled back for idling. Measured on Turso Cloud: after a pipeline request,
+    # a transaction idle past the limit is rolled back and answered so, and its stream
+    # forgotten by twice it; after a cursor, it lasts twice the limit, not thrice.
     def get_stream(self, baton: str | None) -> tuple[str, Stream | None, bool]:
         if baton is None:
             stream_id = f"{self.server_id}:{next(self.stream_numbers):x}"
@@ -375,26 +377,29 @@ class HranaStub:
         stream = self.streams.get(stream_id)
         if stream is None:
             return stream_id, None, False
-        idle = time.monotonic() - stream.answered_at if stream.expires else 0.0
-        if idle > 2 * self.idle_timeout or (
-            idle > self.idle_timeout and not stream.connection.in_transaction
+        idle = time.monotonic() - stream.answered_at
+        if stream.expires_soon and (
+            idle > 2 * self.idle_timeout
+            or (idle > self.idle_timeout and not stream.connection.in_transaction)
         ):
             self.streams.pop(stream_id).connection.close()
             return stream_id, None, False
-        rolled_back = idle > self.idle_timeout
+        rolled_back = stream.connection.in_transaction and idle > (
+            self.idle_timeout if stream.expires_soon else 2.5 * self.idle_timeout
+        )
         if rolled_back:
             stream.connection.execute("ROLLBACK")
         return stream_id, stream, rolled_back
 
     # The baton for the stream's next request, or None once closed.
     def finish_request(
-        self, stream_id: str, stream: Stream, closing: bool, expires: bool
+        self, stream_id: str, stream: Stream, closing: bool, expires_soon: bool
     ) -> str | None:
         if closing:
             self.streams.pop(stream_id).connection.close()
             return None
         stream.answered_at = time.monotonic()
-        stream.expires = expires
+        stream.expires_soon = expires_soon
         return f"{stream_id}:{secrets.token_hex(2)}"
 
     # As upstream's own stub server, any other request gets a bare response of its type.

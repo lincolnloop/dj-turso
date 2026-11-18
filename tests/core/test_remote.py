@@ -316,9 +316,8 @@ def test_failing_init_command_raises_operational_error(
     assert str(excinfo.value) == "Tursodb error: Parse error: no such table: missing"
 
 
-# How the server expires an idle stream, which the client gives up before then:
-# measured on Turso Cloud, and so answered by the stub. Upstream's session has no
-# such guard.
+# How the server expires an idle stream: measured on Turso Cloud, and so answered by
+# the stub. Upstream's session, unlike dj-turso's, replaces no idle stream.
 @pytest.mark.timeout(40)
 def test_idle_transaction_after_pipeline_is_rolled_back(
     remote_settings: dict[str, t.Any],
@@ -385,6 +384,29 @@ def test_idle_session_state_after_pipeline_is_forgotten(
         )
 
     assert str(excinfo.value) == f"HTTP status 404: stream not found: {stream_id}"
+
+
+@pytest.mark.timeout(50)
+def test_idle_transaction_after_cursor_is_rolled_back_later(
+    remote_settings: dict[str, t.Any],
+) -> None:
+    remote_session = serverless_session.Session(
+        remote_settings["NAME"], auth_token=remote_settings["OPTIONS"]["auth_token"]
+    )
+    remote_session.execute_stmt("BEGIN")
+    time.sleep(3 * session.STREAM_IDLE_TIMEOUT + 1)
+
+    with pytest.raises(protocol.ServerError) as excinfo:
+        remote_session.execute_stmt("SELECT 1")
+    autocommit = remote_session.autocommit
+    remote_session.close()
+
+    assert str(excinfo.value) == (
+        "SQLite error: interactive transaction was rolled back because the stream "
+        "was idle for too long; retry the transaction"
+    )
+    assert excinfo.value.code == "SQLITE_BUSY"
+    assert autocommit is True
 
 
 @pytest.mark.timeout(40)

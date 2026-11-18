@@ -486,52 +486,83 @@ def test_close_after_stream_expiry_starts_no_new_stream(
     assert proxy.received_request_count == 3
 
 
+# Turso Cloud keeps a transaction idle past the stream limit for a while, and
+# answers when it has rolled it back.
 @pytest.mark.timeout(30)
-def test_stream_expiry_inside_transaction_loses_transaction_unsent(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+def test_idle_transaction_is_sent_to_its_stream(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with transaction.atomic(using=proxied_alias), proxied_target.cursor() as cursor:
+        cursor.execute("INSERT INTO item VALUES ('before')")
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
+        cursor.execute("INSERT INTO item VALUES ('after')")
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item ORDER BY name")
+        rows = cursor.fetchall()
+
+    assert rows == [("after",), ("before",)]
+    # Setup, CREATE, BEGIN, both INSERTs and COMMIT, all on one stream, then SELECT.
+    assert proxy.received_request_count == 7
+
+
+@pytest.mark.timeout(30)
+def test_transaction_rolled_back_for_idling_is_lost(
+    proxied_target: base.DatabaseWrapper,
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
+        time.sleep(3 * session.STREAM_IDLE_TIMEOUT)
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
+        with pytest.raises(django.db.OperationalError) as commit_excinfo:
+            proxied_target.commit()
 
     assert str(excinfo.value) == (
-        "The remote transaction was idle for over 2 seconds, near the server's 3 "
-        "second limit, so it was abandoned: it did not commit, and this connection "
-        "cannot be used again."
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
     )
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
-        session.IdleTransactionError,
+        session.LostTransactionError,
+        protocol.ServerError,
     ]
-    # Setup, BEGIN, then the old stream's close.
-    assert proxy.received_request_count == 3
+    assert utils.get_cause_chain(commit_excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+    ]
     assert proxied_target.is_usable() is False
 
 
-@pytest.mark.timeout(30)
-def test_stream_expiry_inside_transaction_fails_every_later_statement_alike(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+def test_stream_not_found_inside_transaction_loses_transaction(
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
 ) -> None:
-    with proxied_target.cursor() as cursor:
+    with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
-        with pytest.raises(django.db.OperationalError):
-            cursor.execute("SELECT 1")
+        httpserver.expect_oneshot_request("/v3/cursor").respond_with_json(
+            {"error": "stream not found: 0:1"}, status=http.HTTPStatus.NOT_FOUND
+        )
         with pytest.raises(django.db.OperationalError) as excinfo:
-            cursor.execute("COMMIT")
+            cursor.execute("SELECT 1")
+        with pytest.raises(django.db.OperationalError) as rollback_excinfo:
+            stub_target.rollback()
 
     assert str(excinfo.value) == (
-        "The remote transaction was idle for over 2 seconds, near the server's 3 "
-        "second limit, so it was abandoned: it did not commit, and this connection "
-        "cannot be used again."
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
     )
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
-        session.IdleTransactionError,
+        session.LostTransactionError,
+        protocol.ProtocolError,
     ]
-    assert proxy.received_request_count == 3
+    assert utils.get_cause_chain(rollback_excinfo.value) == [
+        django.db.OperationalError,
+        session.LostTransactionError,
+    ]
+    assert stub_target.is_usable() is False
 
 
 # Turso Cloud names the error "error"; as upstream, "message" counts too, and only a
