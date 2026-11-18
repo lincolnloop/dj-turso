@@ -186,6 +186,29 @@ def test_lost_transaction_in_atomic_block_closes_connection(
     assert rows == [(2,)]
 
 
+def test_lost_transaction_caught_in_atomic_block_fails_commit_and_closes_connection(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    @transaction.atomic(using=proxied_alias)
+    def lose_transaction_quietly() -> None:
+        with proxied_target.cursor() as cursor:
+            proxy.fail_next_request()
+            with pytest.raises(django.db.OperationalError):
+                cursor.execute("SELECT 1")
+
+    with pytest.raises(django.db.OperationalError) as excinfo:
+        lose_transaction_quietly()
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT 2")
+        rows = cursor.fetchall()
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert rows == [(2,)]
+
+
 def test_lost_transaction_fails_every_later_statement_unsent(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
