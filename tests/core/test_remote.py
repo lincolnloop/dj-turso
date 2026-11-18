@@ -48,7 +48,9 @@ def test_url_name_without_serverless_extra_raises_import_error() -> None:
         "handler = django.db.utils.ConnectionHandler("
         "{'default': {'ENGINE': 'dj_turso', 'NAME': 'turso://example.invalid'}});"
         "\ntry: handler['default']"
-        "\nexcept ImportError as exc: sys.exit(f'{exc!r} from {exc.__cause__!r}')"
+        "\nexcept ImportError as exc: sys.exit("
+        "f'{type(exc).__name__}({exc.msg!r}) from {type(exc.__cause__).__name__}"
+        "(msg={exc.__cause__.msg!r}, name={exc.__cause__.name!r})')"
     )
 
     uv = shutil.which("uv")
@@ -88,8 +90,8 @@ def test_url_name_without_serverless_extra_raises_import_error() -> None:
     assert completed.returncode == 1
     assert completed.stderr == (
         "ImportError('A database NAME that is a URL needs the serverless extra: "
-        "install dj-turso[serverless].') from ModuleNotFoundError(\"No module named "
-        "'turso_serverless'\", name='turso_serverless')\n"
+        "install dj-turso[serverless].') from ModuleNotFoundError(msg=\"No module "
+        "named 'turso_serverless'\", name='turso_serverless')\n"
     )
 
 
