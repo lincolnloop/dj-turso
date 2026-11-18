@@ -12,6 +12,7 @@ import django.db
 import django.db.utils
 import pytest
 import pytest_django
+import pytest_httpserver
 from django.db import transaction
 from turso_serverless import protocol
 
@@ -101,7 +102,7 @@ def test_failed_session_setup_closes_socket(
     with pytest.raises(django.db.OperationalError) as excinfo:
         proxied_target.ensure_connection()
 
-    assert str(excinfo.value) == "SQLite error: no such table: missing"
+    assert str(excinfo.value) == "Tursodb error: Parse error: no such table: missing"
     assert proxy.wait_for_open_connection_count(0) == 0
 
 
@@ -232,11 +233,11 @@ def test_lost_transaction_fails_every_later_statement_unsent(
 
 
 def test_malformed_response_inside_transaction_loses_transaction(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
 ) -> None:
-    with proxied_target.cursor() as cursor:
+    with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        proxy.answer_next_requests(b"not json\n")
+        httpserver.expect_oneshot_request("/v3/cursor").respond_with_data("not json\n")
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
 
@@ -249,21 +250,21 @@ def test_malformed_response_inside_transaction_loses_transaction(
         session.LostTransactionError,
         protocol.ProtocolError,
     ]
-    assert proxied_target.is_usable() is False
+    assert stub_target.is_usable() is False
 
 
 # A cursor error makes the driver ask for the transaction state in a pipeline, whose
 # malformed answer ends the stream.
 def test_malformed_state_answer_inside_transaction_loses_transaction(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
 ) -> None:
-    with proxied_target.cursor() as cursor:
+    with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        proxy.answer_next_requests(
-            b'{"baton": "baton", "base_url": null}\n'
-            b'{"type": "error", "error": {"message": "cursor failed"}}\n',
-            b"not json",
+        httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+            '{"baton": "baton", "base_url": null}\n'
+            '{"type": "error", "error": {"message": "cursor failed"}}\n'
         )
+        httpserver.expect_oneshot_request("/v3/pipeline").respond_with_data("not json")
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
 
@@ -276,25 +277,24 @@ def test_malformed_state_answer_inside_transaction_loses_transaction(
         session.LostTransactionError,
         protocol.ServerError,
     ]
-    assert proxied_target.is_usable() is False
+    assert stub_target.is_usable() is False
 
 
 # When the transaction state is unclear after a statement, the driver asks for it in
 # a pipeline, and on a malformed answer ends the stream yet returns the statement.
 def test_stream_ended_after_successful_statement_loses_transaction(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
 ) -> None:
-    with proxied_target.cursor() as cursor:
+    with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        proxy.answer_next_requests(
-            b'{"baton": "baton", "base_url": null}\n'
-            b'{"type": "step_begin", "step": 0, "cols": [{"name": "1"}]}\n'
-            b'{"type": "row", "row": [{"type": "integer", "value": "1"}]}\n'
-            b'{"type": "step_end", "affected_row_count": 0, '
-            b'"last_insert_rowid": null}\n'
-            b'{"type": "step_error", "step": 1, "error": {"message": "unclear"}}\n',
-            b"not json",
+        httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+            '{"baton": "baton", "base_url": null}\n'
+            '{"type": "step_begin", "step": 0, "cols": [{"name": "1"}]}\n'
+            '{"type": "row", "row": [{"type": "integer", "value": "1"}]}\n'
+            '{"type": "step_end", "affected_row_count": 0, "last_insert_rowid": null}\n'
+            '{"type": "step_error", "step": 1, "error": {"message": "unclear"}}\n'
         )
+        httpserver.expect_oneshot_request("/v3/pipeline").respond_with_data("not json")
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
 
@@ -306,15 +306,13 @@ def test_stream_ended_after_successful_statement_loses_transaction(
         django.db.OperationalError,
         session.LostTransactionError,
     ]
-    assert proxied_target.is_usable() is False
+    assert stub_target.is_usable() is False
 
 
 def test_new_stream_repeats_session_setup(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
-    proxied_target.settings_dict["OPTIONS"]["init_command"] = (
-        "PRAGMA defer_foreign_keys = ON"
-    )
+    proxied_target.settings_dict["OPTIONS"]["init_command"] = "PRAGMA cache_size = 1234"
     proxied_target.ensure_connection()
     proxy.fail_next_request()
 
@@ -323,17 +321,19 @@ def test_new_stream_repeats_session_setup(
             cursor.execute("SELECT 1")
         cursor.execute("PRAGMA foreign_keys")
         foreign_keys = cursor.fetchall()
-        cursor.execute("PRAGMA defer_foreign_keys")
-        defer_foreign_keys = cursor.fetchall()
+        cursor.execute("PRAGMA cache_size")
+        cache_size = cursor.fetchall()
 
     assert foreign_keys == [(1,)]
-    assert defer_foreign_keys == [(1,)]
+    assert cache_size == [(1234,)]
     # Setup, the failed query, setup again, then each query once.
     assert proxy.received_request_count == 5
 
 
 def test_failed_setup_of_new_stream_is_not_used_by_next_query(
-    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+    httpserver: pytest_httpserver.HTTPServer,
+    proxied_target: base.DatabaseWrapper,
+    proxy: utils.CountingProxy,
 ) -> None:
     proxied_target.ensure_connection()
     proxy.fail_next_request()
@@ -341,11 +341,18 @@ def test_failed_setup_of_new_stream_is_not_used_by_next_query(
     with proxied_target.cursor() as cursor:
         with pytest.raises(django.db.OperationalError):
             cursor.execute("SELECT 1")
-        proxy.answer_next_requests(
-            b'{"baton": "half-set-up", "base_url": null, "results": ['
-            b'{"type": "error", "error": {"message": "setup failed"}}, '
-            b'{"type": "ok", "response": {"type": "get_autocommit", '
-            b'"is_autocommit": true}}]}'
+        httpserver.expect_oneshot_request("/v3/pipeline").respond_with_json(
+            {
+                "baton": "half-set-up",
+                "base_url": None,
+                "results": [
+                    {"type": "error", "error": {"message": "setup failed"}},
+                    {
+                        "type": "ok",
+                        "response": {"type": "get_autocommit", "is_autocommit": True},
+                    },
+                ],
+            }
         )
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 2")
@@ -359,13 +366,7 @@ def test_failed_setup_of_new_stream_is_not_used_by_next_query(
 def test_connection_closed_by_server_answer_reconnects(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
-    proxy.answer_next_requests(
-        b'{"baton": null, "base_url": null, "results": ['
-        b'{"type": "ok", "response": {"type": "execute", "result": {"cols": [], '
-        b'"rows": [], "affected_row_count": 0, "last_insert_rowid": null}}}, '
-        b'{"type": "ok", "response": {"type": "get_autocommit", "is_autocommit": true}}'
-        b"]}"
-    )
+    proxy.close_after_next_answer()
     proxied_target.ensure_connection()
 
     with proxied_target.cursor() as cursor:
@@ -376,8 +377,8 @@ def test_connection_closed_by_server_answer_reconnects(
     assert proxy.accepted_connection_count == 2
 
 
-# Past where sqld expires a stream and Turso Cloud rolls back its transaction.
-IDLE_PAST_STREAM_EXPIRY = 12.5
+# Past where the server expires a stream and rolls back its transaction.
+SECONDS_PAST_STREAM_EXPIRY = 2.5
 
 
 @pytest.mark.timeout(30)
@@ -386,7 +387,7 @@ def test_query_after_stream_expiry_starts_new_stream_unsent_to_old(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("SELECT 1")
-        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
         cursor.execute("SELECT 2")
         rows = cursor.fetchall()
 
@@ -417,7 +418,7 @@ def test_query_after_stream_expiry_runs_with_session_setup(
 ) -> None:
     with remote_target.cursor() as cursor:
         cursor.execute("SELECT 1")
-        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
         cursor.execute("PRAGMA foreign_keys")
         rows = cursor.fetchall()
 
@@ -429,7 +430,7 @@ def test_disabled_constraint_checking_survives_stream_expiry(
     remote_target: base.DatabaseWrapper,
 ) -> None:
     disabled = remote_target.disable_constraint_checking()
-    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+    time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
     with remote_target.cursor() as cursor:
         cursor.execute("PRAGMA foreign_keys")
         rows = cursor.fetchall()
@@ -444,7 +445,7 @@ def test_reenabled_constraint_checking_survives_stream_expiry(
 ) -> None:
     remote_target.disable_constraint_checking()
     remote_target.enable_constraint_checking()
-    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+    time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
     with remote_target.cursor() as cursor:
         cursor.execute("PRAGMA foreign_keys")
         rows = cursor.fetchall()
@@ -464,7 +465,7 @@ def test_constraint_checking_disabled_inside_transaction_survives_stream_expiry(
         cursor.execute("COMMIT")
         cursor.execute("PRAGMA foreign_keys")
         rows_before_expiry = cursor.fetchall()
-        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
         cursor.execute("PRAGMA foreign_keys")
         rows = cursor.fetchall()
 
@@ -477,7 +478,7 @@ def test_close_after_stream_expiry_starts_no_new_stream(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("SELECT 1")
-    time.sleep(IDLE_PAST_STREAM_EXPIRY)
+    time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
 
     proxied_target.close()
 
@@ -491,12 +492,12 @@ def test_stream_expiry_inside_transaction_loses_transaction_unsent(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
 
     assert str(excinfo.value) == (
-        "The remote transaction was idle for over 9 seconds, near the server's 10 "
+        "The remote transaction was idle for over 2 seconds, near the server's 3 "
         "second limit, so it was abandoned: it did not commit, and this connection "
         "cannot be used again."
     )
@@ -515,14 +516,14 @@ def test_stream_expiry_inside_transaction_fails_every_later_statement_alike(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
-        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
         with pytest.raises(django.db.OperationalError):
             cursor.execute("SELECT 1")
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("COMMIT")
 
     assert str(excinfo.value) == (
-        "The remote transaction was idle for over 9 seconds, near the server's 10 "
+        "The remote transaction was idle for over 2 seconds, near the server's 3 "
         "second limit, so it was abandoned: it did not commit, and this connection "
         "cannot be used again."
     )
@@ -533,8 +534,8 @@ def test_stream_expiry_inside_transaction_fails_every_later_statement_alike(
     assert proxy.received_request_count == 3
 
 
-# sqld names the error "message" where Turso Cloud says "error"; as upstream, only
-# a string counts.
+# Turso Cloud names the error "error"; as upstream, "message" counts too, and only a
+# string.
 @pytest.mark.parametrize(
     ("body", "message"),
     [
@@ -554,15 +555,17 @@ def test_stream_expiry_inside_transaction_fails_every_later_statement_alike(
 )
 def test_error_status_raises_operational_error_with_server_message(
     body: bytes,
+    httpserver: pytest_httpserver.HTTPServer,
     message: str,
-    proxied_target: base.DatabaseWrapper,
-    proxy: utils.CountingProxy,
+    stub_target: base.DatabaseWrapper,
 ) -> None:
-    proxied_target.ensure_connection()
-    proxy.answer_next_requests(body, status=http.HTTPStatus.BAD_REQUEST)
+    stub_target.ensure_connection()
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        body, status=http.HTTPStatus.BAD_REQUEST, content_type="application/json"
+    )
 
     with (
-        proxied_target.cursor() as cursor,
+        stub_target.cursor() as cursor,
         pytest.raises(django.db.OperationalError) as excinfo,
     ):
         cursor.execute("SELECT 1")
@@ -590,13 +593,7 @@ def test_answer_slower_than_connect_timeout_is_awaited(
 def test_answer_slower_than_connect_timeout_is_awaited_after_reconnect(
     proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
 ) -> None:
-    proxy.answer_next_requests(
-        b'{"baton": null, "base_url": null, "results": ['
-        b'{"type": "ok", "response": {"type": "execute", "result": {"cols": [], '
-        b'"rows": [], "affected_row_count": 0, "last_insert_rowid": null}}}, '
-        b'{"type": "ok", "response": {"type": "get_autocommit", "is_autocommit": true}}'
-        b"]}"
-    )
+    proxy.close_after_next_answer()
     proxied_target.ensure_connection()
 
     with proxied_target.cursor() as cursor:
@@ -651,10 +648,10 @@ def test_unanswered_connect_fails_after_connect_timeout(
 )
 def test_http_proxy_from_environment_carries_queries(
     django_db_blocker: pytest_django.DjangoDbBlocker,
+    hrana_stub: utils.HranaStub,
     monkeypatch: pytest.MonkeyPatch,
     proxy: utils.CountingProxy,
     proxy_template: str,
-    sqld_url: str,
 ) -> None:
     for name in ("HTTP_PROXY", "NO_PROXY", "no_proxy"):
         monkeypatch.delenv(name, raising=False)
@@ -663,8 +660,8 @@ def test_http_proxy_from_environment_carries_queries(
         {
             "default": {
                 "ENGINE": "dj_turso",
-                "NAME": sqld_url,
-                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+                "NAME": hrana_stub.url,
+                "OPTIONS": {"auth_token": hrana_stub.auth_token},
             }
         }
     )
@@ -684,8 +681,8 @@ def test_http_proxy_from_environment_carries_queries(
 # Port 1 refuses connections: only a bypassed proxy lets the query through.
 def test_no_proxy_from_environment_bypasses_proxy(
     django_db_blocker: pytest_django.DjangoDbBlocker,
+    hrana_stub: utils.HranaStub,
     monkeypatch: pytest.MonkeyPatch,
-    sqld_url: str,
 ) -> None:
     for name in ("HTTP_PROXY", "NO_PROXY"):
         monkeypatch.delenv(name, raising=False)
@@ -695,8 +692,8 @@ def test_no_proxy_from_environment_bypasses_proxy(
         {
             "default": {
                 "ENGINE": "dj_turso",
-                "NAME": sqld_url,
-                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+                "NAME": hrana_stub.url,
+                "OPTIONS": {"auth_token": hrana_stub.auth_token},
             }
         }
     )
@@ -713,9 +710,9 @@ def test_no_proxy_from_environment_bypasses_proxy(
 
 def test_http_proxy_credentials_from_environment_authorize_queries(
     django_db_blocker: pytest_django.DjangoDbBlocker,
+    hrana_stub: utils.HranaStub,
     monkeypatch: pytest.MonkeyPatch,
     proxy: utils.CountingProxy,
-    sqld_url: str,
 ) -> None:
     for name in ("HTTP_PROXY", "NO_PROXY", "no_proxy"):
         monkeypatch.delenv(name, raising=False)
@@ -724,8 +721,8 @@ def test_http_proxy_credentials_from_environment_authorize_queries(
         {
             "default": {
                 "ENGINE": "dj_turso",
-                "NAME": sqld_url,
-                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+                "NAME": hrana_stub.url,
+                "OPTIONS": {"auth_token": hrana_stub.auth_token},
             }
         }
     )

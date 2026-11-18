@@ -384,30 +384,28 @@ def test_url_name_tests_on_local_test_name(
 
 def test_url_test_name_is_left_in_place(
     capsys: pytest.CaptureFixture[str],
+    hrana_stub: utils.HranaStub,
     register_database: RegisterDatabase,
-    sqld_url: str,
 ) -> None:
     connection = register_database(
         "creation",
         {
             "ENGINE": "dj_turso",
-            "NAME": sqld_url,
-            "OPTIONS": {"auth_token": utils.SQLD_JWT},
-            "TEST": {"NAME": sqld_url},
+            "NAME": hrana_stub.url,
+            "OPTIONS": {"auth_token": hrana_stub.auth_token},
+            "TEST": {"NAME": hrana_stub.url},
         },
     )
 
     test_name = connection.creation.create_test_db(verbosity=1)
-    connection.creation.destroy_test_db(sqld_url, verbosity=1)
+    connection.creation.destroy_test_db(hrana_stub.url, verbosity=1)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE name LIKE 'core%' ORDER BY name"
         )
         rows = cursor.fetchall()
-        for (table,) in rows:
-            cursor.execute(f'DROP TABLE "{table}"')
 
-    assert test_name == sqld_url
+    assert test_name == hrana_stub.url
     assert rows == [
         ("core_attachment",),
         ("core_counter",),

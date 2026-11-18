@@ -5,15 +5,18 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import time
 import typing as t
 
 import django.db
 import django.db.utils
 import pytest
 import pytest_django
+import pytest_httpserver
 from turso_serverless import protocol
+from turso_serverless import session as serverless_session
 
-from dj_turso import base
+from dj_turso import base, session
 from tests import utils
 
 
@@ -98,17 +101,10 @@ def test_remote_query_returns_row(remote_target: base.DatabaseWrapper) -> None:
 
 
 def test_wrong_auth_token_raises_operational_error_with_cause(
-    django_db_blocker: pytest_django.DjangoDbBlocker, sqld_url: str
+    django_db_blocker: pytest_django.DjangoDbBlocker, remote_settings: dict[str, t.Any]
 ) -> None:
-    handler = django.db.utils.ConnectionHandler(
-        {
-            "default": {
-                "ENGINE": "dj_turso",
-                "NAME": sqld_url,
-                "OPTIONS": {"auth_token": "wrong"},
-            }
-        }
-    )
+    remote_settings["OPTIONS"] = {"auth_token": "wrong"}
+    handler = django.db.utils.ConnectionHandler({"default": remote_settings})
     connection = t.cast("base.DatabaseWrapper", handler["default"])
 
     with (
@@ -117,12 +113,31 @@ def test_wrong_auth_token_raises_operational_error_with_cause(
     ):
         connection.ensure_connection()
 
-    assert str(excinfo.value) == "HTTP status 401: Unauthorized: `The JWT is invalid`"
+    assert str(excinfo.value) == "HTTP status 400: JWT error: InvalidToken"
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
         connection.Database.OperationalError,
         protocol.ProtocolError,
     ]
+
+
+def test_missing_auth_token_raises_operational_error(
+    django_db_blocker: pytest_django.DjangoDbBlocker, remote_settings: dict[str, t.Any]
+) -> None:
+    del remote_settings["OPTIONS"]["auth_token"]
+    handler = django.db.utils.ConnectionHandler({"default": remote_settings})
+    connection = handler["default"]
+
+    with (
+        django_db_blocker.unblock(),
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        connection.ensure_connection()
+
+    assert str(excinfo.value) == (
+        "HTTP status 401: Unauthorized: `unauthorized access attempt on database: "
+        "empty JWT token`"
+    )
 
 
 # The driver files an error coded by nothing as an integrity error when its message
@@ -147,15 +162,19 @@ def test_unreachable_url_naming_a_constraint_raises_operational_error(
     )
 
 
+# As a proxy in front of the server might answer.
 def test_error_status_without_json_body_raises_operational_error(
-    django_db_blocker: pytest_django.DjangoDbBlocker, sqld_url: str
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    httpserver: pytest_httpserver.HTTPServer,
 ) -> None:
+    httpserver.expect_oneshot_request("/v3/pipeline").respond_with_data(
+        "<html>Not Found</html>", status=404, content_type="text/html"
+    )
     handler = django.db.utils.ConnectionHandler(
         {
             "default": {
                 "ENGINE": "dj_turso",
-                "NAME": f"{sqld_url}/missing",
-                "OPTIONS": {"auth_token": utils.SQLD_JWT},
+                "NAME": httpserver.url_for("").rstrip("/"),
             }
         }
     )
@@ -171,20 +190,10 @@ def test_error_status_without_json_body_raises_operational_error(
 
 
 def test_failing_init_command_raises_operational_error(
-    django_db_blocker: pytest_django.DjangoDbBlocker, sqld_url: str
+    django_db_blocker: pytest_django.DjangoDbBlocker, remote_settings: dict[str, t.Any]
 ) -> None:
-    handler = django.db.utils.ConnectionHandler(
-        {
-            "default": {
-                "ENGINE": "dj_turso",
-                "NAME": sqld_url,
-                "OPTIONS": {
-                    "auth_token": utils.SQLD_JWT,
-                    "init_command": "SELECT * FROM missing",
-                },
-            }
-        }
-    )
+    remote_settings["OPTIONS"]["init_command"] = "SELECT * FROM missing"
+    handler = django.db.utils.ConnectionHandler({"default": remote_settings})
     connection = handler["default"]
 
     with (
@@ -193,4 +202,93 @@ def test_failing_init_command_raises_operational_error(
     ):
         connection.ensure_connection()
 
-    assert str(excinfo.value) == "SQLite error: no such table: missing"
+    assert str(excinfo.value) == "Tursodb error: Parse error: no such table: missing"
+
+
+# How the server expires an idle stream, which the client gives up before then:
+# measured on Turso Cloud, and so answered by the stub. Upstream's session has no
+# such guard.
+@pytest.mark.timeout(40)
+def test_idle_transaction_after_pipeline_is_rolled_back(
+    remote_settings: dict[str, t.Any],
+) -> None:
+    remote_session = serverless_session.Session(
+        remote_settings["NAME"], auth_token=remote_settings["OPTIONS"]["auth_token"]
+    )
+    remote_session.execute_pipeline([{"type": "execute", "stmt": {"sql": "BEGIN"}}])
+    time.sleep(session.STREAM_IDLE_TIMEOUT + 2)
+
+    results = remote_session.execute_pipeline(
+        [{"type": "execute", "stmt": {"sql": "SELECT 1"}}]
+    )
+
+    assert results == [
+        {
+            "type": "error",
+            "error": {
+                "message": "SQLite error: interactive transaction was rolled back "
+                "because the stream was idle for too long; retry the transaction",
+                "code": "SQLITE_BUSY",
+            },
+        }
+    ]
+    assert remote_session.autocommit is True
+    assert remote_session._baton is None
+
+
+@pytest.mark.timeout(40)
+def test_idle_transaction_after_pipeline_is_forgotten_later(
+    remote_settings: dict[str, t.Any],
+) -> None:
+    remote_session = serverless_session.Session(
+        remote_settings["NAME"], auth_token=remote_settings["OPTIONS"]["auth_token"]
+    )
+    remote_session.execute_pipeline([{"type": "execute", "stmt": {"sql": "BEGIN"}}])
+    stream_id = str(remote_session._baton).rpartition(":")[0]
+    time.sleep(2 * session.STREAM_IDLE_TIMEOUT + 1)
+
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        remote_session.execute_pipeline(
+            [{"type": "execute", "stmt": {"sql": "SELECT 1"}}]
+        )
+
+    assert str(excinfo.value) == f"HTTP status 404: stream not found: {stream_id}"
+
+
+@pytest.mark.timeout(40)
+def test_idle_session_state_after_pipeline_is_forgotten(
+    remote_settings: dict[str, t.Any],
+) -> None:
+    remote_session = serverless_session.Session(
+        remote_settings["NAME"], auth_token=remote_settings["OPTIONS"]["auth_token"]
+    )
+    remote_session.execute_pipeline(
+        [{"type": "execute", "stmt": {"sql": "PRAGMA foreign_keys = OFF"}}]
+    )
+    stream_id = str(remote_session._baton).rpartition(":")[0]
+    time.sleep(session.STREAM_IDLE_TIMEOUT + 2)
+
+    with pytest.raises(protocol.ProtocolError) as excinfo:
+        remote_session.execute_pipeline(
+            [{"type": "execute", "stmt": {"sql": "SELECT 1"}}]
+        )
+
+    assert str(excinfo.value) == f"HTTP status 404: stream not found: {stream_id}"
+
+
+@pytest.mark.timeout(40)
+def test_idle_transaction_after_cursor_survives(
+    remote_settings: dict[str, t.Any],
+) -> None:
+    remote_session = serverless_session.Session(
+        remote_settings["NAME"], auth_token=remote_settings["OPTIONS"]["auth_token"]
+    )
+    remote_session.execute_stmt("BEGIN")
+    time.sleep(2 * session.STREAM_IDLE_TIMEOUT + 1)
+
+    result = remote_session.execute_stmt("SELECT 1")
+    autocommit = remote_session.autocommit
+    remote_session.close()
+
+    assert result.rows == [(1,)]
+    assert autocommit is False

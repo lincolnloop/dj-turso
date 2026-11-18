@@ -126,7 +126,7 @@ def test_uuid_parameter_is_not_bound(driver_target: base.DatabaseWrapper) -> Non
     error_class = {
         "cloud": TypeError,
         "pyturso": django.db.OperationalError,
-        "sqld": TypeError,
+        "stub": TypeError,
     }[driver_target.alias]
 
     with driver_target.cursor() as cursor, pytest.raises(error_class) as excinfo:
@@ -139,7 +139,7 @@ def test_uuid_parameter_is_not_bound(driver_target: base.DatabaseWrapper) -> Non
             "cloud": "Unsupported value type: UUID",
             "pyturso": "unexpected parameter value, only None, numbers, strings and "
             "bytes are supported",
-            "sqld": "Unsupported value type: UUID",
+            "stub": "Unsupported value type: UUID",
         }[driver_target.alias]
     )
 
@@ -214,7 +214,7 @@ def test_insert_returning_constraint_error_raises_on_execute(
         == {
             "cloud": "Tursodb error: UNIQUE constraint failed: item.name",
             "pyturso": "UNIQUE constraint failed: item.name",
-            "sqld": "SQLite error: UNIQUE constraint failed: item.name",
+            "stub": "Tursodb error: UNIQUE constraint failed: item.name",
         }[driver_target.alias]
     )
 
@@ -259,7 +259,7 @@ def test_returning_cursor_keeps_driver_metadata(
         ("name", None, None, None, None, None, None),
     )
     assert rowcount == -1
-    assert lastrowid == {"cloud": 3, "pyturso": None, "sqld": 3}[driver_target.alias]
+    assert lastrowid == {"cloud": 3, "pyturso": None, "stub": 3}[driver_target.alias]
     assert first_rows == [(1, "a")]
     assert second_rows == [(2, "b")]
     assert rest == [(3, "c")]
