@@ -2,42 +2,30 @@ from django.db import models
 from django.db.models import expressions, lookups
 
 
-class Attachment(models.Model):
+class Attachment(models.Model):  # noqa: DJ008
     payload = models.BinaryField()
 
-    def __str__(self) -> str:
-        return f"attachment {self.pk}"
 
-
-class Tag(models.Model):
+class Tag(models.Model):  # noqa: DJ008
     name = models.TextField()
 
-    def __str__(self) -> str:
-        return self.name
 
-
-class Event(models.Model):
+class Event(models.Model):  # noqa: DJ008
     start = models.DateTimeField(null=True)
     end = models.DateTimeField(null=True)
     day = models.DateField(null=True)
     time = models.TimeField(null=True)
     duration = models.DurationField(null=True)
 
-    def __str__(self) -> str:
-        return f"event {self.pk}"
 
-
-class Product(models.Model):
+class Product(models.Model):  # noqa: DJ008
     name = models.CharField(max_length=30)
 
     class Meta:
         indexes = [models.Index(fields=["name"], name="ProductNameIndex")]
 
-    def __str__(self) -> str:
-        return self.name
 
-
-class Counter(models.Model):
+class Counter(models.Model):  # noqa: DJ008
     value = models.IntegerField()
     mask = models.IntegerField()
 
@@ -64,11 +52,8 @@ class Counter(models.Model):
             ),
         ]
 
-    def __str__(self) -> str:
-        return f"counter {self.pk}"
 
-
-class Shift(models.Model):
+class Shift(models.Model):  # noqa: DJ008
     start = models.DateTimeField()
     end = models.DateTimeField()
     duration = models.DurationField()
@@ -87,11 +72,8 @@ class Shift(models.Model):
             ),
         ]
 
-    def __str__(self) -> str:
-        return f"shift {self.pk}"
 
-
-class Slug(models.Model):
+class Slug(models.Model):  # noqa: DJ008
     name = models.TextField()
 
     class Meta:
@@ -105,6 +87,3 @@ class Slug(models.Model):
                 name="slug_unique_draft",
             ),
         ]
-
-    def __str__(self) -> str:
-        return self.name
