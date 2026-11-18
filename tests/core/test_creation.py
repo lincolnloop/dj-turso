@@ -151,6 +151,103 @@ def test_runner_threads_share_default_test_database(tmp_path: pathlib.Path) -> N
     assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
+def test_runner_keepdb_removes_default_test_database(tmp_path: pathlib.Path) -> None:
+    child = (
+        "import django, django.core.management;"
+        "django.setup();"
+        "django.core.management.call_command("
+        "'test', 'tests.core.thread_cases', keepdb=True)"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-c", child],
+        capture_output=True,
+        check=False,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "tests.core.settings",
+            "PYTHONPATH": str(REPOSITORY_ROOT),
+            "TMPDIR": str(tmp_path),
+        },
+        text=True,
+    )
+
+    assert re.sub(r"in [0-9.]+s", "in 0s", completed.stderr) == (
+        "Using existing test database for alias 'default'...\n"
+        "...\n"
+        "----------------------------------------------------------------------\n"
+        "Ran 3 tests in 0s\n"
+        "\n"
+        "OK\n"
+        "Preserving test database for alias 'default'...\n"
+    )
+    assert completed.returncode == 0
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
+def test_keepdb_destroy_removes_default_test_database(
+    monkeypatch: pytest.MonkeyPatch,
+    register_database: RegisterDatabase,
+    tmp_path: pathlib.Path,
+) -> None:
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    connection = register_database(
+        "creation", {"ENGINE": "dj_turso", "NAME": "default.db"}
+    )
+
+    connection.creation.create_test_db(verbosity=0, keepdb=True)
+    connection.creation.clone_test_db(suffix="1", verbosity=0, keepdb=True)
+    [directory] = tmp_path.iterdir()
+    listing = sorted(path.name for path in directory.iterdir())
+    connection.creation.destroy_test_db(suffix="1", verbosity=0, keepdb=True)
+    connection.creation.destroy_test_db("default.db", verbosity=0, keepdb=True)
+
+    assert listing == [
+        "test_creation.db",
+        "test_creation.db-wal",
+        "test_creation_1.db",
+        "test_creation_1.db-wal",
+    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
+
+
+@pytest.mark.timeout(60)
+def test_reuse_db_removes_default_test_database(
+    monkeypatch: pytest.MonkeyPatch,
+    pytester: pytest.Pytester,
+    short_tmp_path: pathlib.Path,
+) -> None:
+    pytester.makepyfile(
+        settings="""
+        DATABASES = {"default": {"ENGINE": "dj_turso", "NAME": "default.db"}}
+        DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+        INSTALLED_APPS = ["tests.core"]
+        """,
+        test_reuse="""
+        import pytest
+
+        from tests.core import models
+
+        @pytest.mark.django_db
+        def test_writes():
+            models.Tag.objects.create(name="written")
+
+            assert list(models.Tag.objects.values_list("name", flat=True)) == [
+                "written"
+            ]
+        """,
+    )
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "settings")
+    monkeypatch.setenv("PYTHONPATH", f"{pytester.path}{os.pathsep}{REPOSITORY_ROOT}")
+    monkeypatch.setenv("TMPDIR", str(short_tmp_path))
+
+    result = pytester.runpytest_subprocess("--reuse-db", "-p", "no:cacheprovider")
+
+    result.assert_outcomes(passed=1)
+    assert sorted(path.name for path in short_tmp_path.iterdir()) == []
+
+
 def test_explicit_test_name_is_used(
     register_database: RegisterDatabase, tmp_path: pathlib.Path
 ) -> None:

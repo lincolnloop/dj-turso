@@ -73,6 +73,10 @@ and Django's runner gives each worker a copy. pytest-xdist workers each get a fi
 instead: pytest-django names it `TEST["NAME"]`, or `test_` and `NAME`, with the worker
 appended, such as `test_default.db_gw0`.
 
+As with Django's sqlite3 in-memory default, the temporary file never outlives the run:
+`--keepdb`, and pytest-django's `--reuse-db`, keep only a test database named in
+`TEST["NAME"]`.
+
 So with a URL `NAME`, as for Turso Cloud, point the test database at a file:
 
 ```python

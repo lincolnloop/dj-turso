@@ -1,6 +1,8 @@
+import atexit
 import multiprocessing
 import os
 import pathlib
+import shutil
 import tempfile
 import typing as t
 
@@ -49,8 +51,16 @@ class DatabaseCreation(SqliteDatabaseCreation):
         keepdb: bool = False,
         suffix: str | None = None,
     ) -> None:
-        keepdb = keepdb or drivers.is_remote_name(self.connection.settings_dict["NAME"])
-        super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
+        test_database_name = self.connection.settings_dict["NAME"]
+        keepdb = keepdb or drivers.is_remote_name(test_database_name)
+        # Like sqlite3's in-memory default, kept or not, it ends with the run.
+        if keepdb and test_database_name == self.default_test_db_name:
+            if suffix is not None:
+                test_database_name = self.get_test_db_clone_settings(suffix)["NAME"]
+            super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
+            self._destroy_test_db(test_database_name, verbosity)
+        else:
+            super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
 
     # pyturso has no shared cache, so each connection to ":memory:" is a database of its
     # own: a temporary file, in a private directory, is the one every thread opens.
@@ -61,6 +71,8 @@ class DatabaseCreation(SqliteDatabaseCreation):
         if self.default_test_db_name is None:
             alias = self.connection.alias
             directory = tempfile.mkdtemp(prefix=f"test_{alias}_")
+            # pytest-django's --reuse-db never destroys the test database.
+            atexit.register(shutil.rmtree, directory, ignore_errors=True)
             self.default_test_db_name = str(
                 pathlib.Path(directory) / f"test_{alias}.db"
             )
