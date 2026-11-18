@@ -6,7 +6,6 @@ import decimal
 import itertools
 import re
 import typing as t
-import uuid
 
 from django.db.backends.sqlite3 import base as sqlite_base
 
@@ -120,7 +119,7 @@ def adapt_value(value: object) -> object:
             return value.isoformat(" ")
         case dt.date() | dt.time():
             return value.isoformat()
-        case decimal.Decimal() | uuid.UUID():
+        case decimal.Decimal():
             return str(value)
         case memoryview():
             return bytes(value)

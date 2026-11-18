@@ -78,11 +78,6 @@ def test_doubled_percent_collapses_with_params(
         pytest.param(-(2**63), -(2**63), id="smallest-integer"),
         pytest.param(3, Priority.HIGH, id="int-enum"),
         pytest.param(b"ab", memoryview(b"ab"), id="memoryview"),
-        pytest.param(
-            "12345678-1234-5678-1234-567812345678",
-            uuid.UUID("12345678-1234-5678-1234-567812345678"),
-            id="uuid",
-        ),
     ],
 )
 def test_python_value_binds_as_sqlite_storage_form(
@@ -124,6 +119,29 @@ def test_integer_choices_filter_binds_as_integer() -> None:
     )
 
     assert values == [2]
+
+
+# Like stdlib sqlite3, the drivers bind no UUID; Django's UUIDField stores hex itself.
+def test_uuid_parameter_is_not_bound(driver_target: base.DatabaseWrapper) -> None:
+    error_class = {
+        "cloud": TypeError,
+        "pyturso": django.db.OperationalError,
+        "sqld": TypeError,
+    }[driver_target.alias]
+
+    with driver_target.cursor() as cursor, pytest.raises(error_class) as excinfo:
+        cursor.execute("SELECT %s", [uuid.UUID("12345678-1234-5678-1234-567812345678")])
+
+    assert type(excinfo.value) is error_class
+    assert (
+        str(excinfo.value)
+        == {
+            "cloud": "Unsupported value type: UUID",
+            "pyturso": "unexpected parameter value, only None, numbers, strings and "
+            "bytes are supported",
+            "sqld": "Unsupported value type: UUID",
+        }[driver_target.alias]
+    )
 
 
 @pytest.mark.usefixtures("item_table")
