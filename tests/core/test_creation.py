@@ -383,7 +383,9 @@ def test_url_name_tests_on_local_test_name(
 
 
 def test_url_test_name_is_left_in_place(
-    register_database: RegisterDatabase, sqld_url: str
+    capsys: pytest.CaptureFixture[str],
+    register_database: RegisterDatabase,
+    sqld_url: str,
 ) -> None:
     connection = register_database(
         "creation",
@@ -395,8 +397,8 @@ def test_url_test_name_is_left_in_place(
         },
     )
 
-    test_name = connection.creation.create_test_db(verbosity=0)
-    connection.creation.destroy_test_db(sqld_url, verbosity=0)
+    test_name = connection.creation.create_test_db(verbosity=1)
+    connection.creation.destroy_test_db(sqld_url, verbosity=1)
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE name LIKE 'core%' ORDER BY name"
@@ -415,6 +417,10 @@ def test_url_test_name_is_left_in_place(
         ("core_slug",),
         ("core_tag",),
     ]
+    assert capsys.readouterr().err == (
+        "Using existing test database for alias 'creation'...\n"
+        "Preserving test database for alias 'creation'...\n"
+    )
 
 
 @pytest.mark.parametrize(

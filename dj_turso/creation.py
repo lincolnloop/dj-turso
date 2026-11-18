@@ -18,6 +18,28 @@ class DatabaseCreation(sqlite_creation.DatabaseCreation):
             self, verbosity: int, database_name: str
         ) -> str: ...
 
+    # dj-turso never creates or destroys a remote test database, so Django logs it as
+    # with keepdb.
+    def create_test_db(
+        self,
+        verbosity: int = 1,
+        autoclobber: bool = False,
+        serialize: bool | None = None,
+        keepdb: bool = False,
+    ) -> str:
+        keepdb = keepdb or drivers.is_remote_name(self._get_test_db_name())
+        return super().create_test_db(verbosity, autoclobber, serialize, keepdb)
+
+    def destroy_test_db(
+        self,
+        old_database_name: str | None = None,
+        verbosity: int = 1,
+        keepdb: bool = False,
+        suffix: str | None = None,
+    ) -> None:
+        keepdb = keepdb or drivers.is_remote_name(self.connection.settings_dict["NAME"])
+        super().destroy_test_db(old_database_name, verbosity, keepdb, suffix)
+
     # pyturso has no shared cache: Django's memorydb URI would open a file of that name.
     def _get_test_db_name(self) -> str:
         test_name: str | None = self.connection.settings_dict["TEST"]["NAME"]
