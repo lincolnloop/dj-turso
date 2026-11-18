@@ -13,10 +13,11 @@ import django.db.utils
 import pytest
 import pytest_django
 import pytest_httpserver
+import turso_serverless
 from turso_serverless import protocol
 from turso_serverless import session as serverless_session
 
-from dj_turso import base, session
+from dj_turso import base, exceptions, session
 from tests import utils
 
 
@@ -187,6 +188,79 @@ def test_error_status_without_json_body_raises_operational_error(
         connection.ensure_connection()
 
     assert str(excinfo.value) == "HTTP status 404"
+
+
+# libSQL, as sqld and Turso Cloud's databases of type SQLite run, has no
+# turso_version(). Django checks the database once per alias per process: the test's
+# own alias.
+def test_engine_without_turso_version_raises_not_supported_error(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    httpserver: pytest_httpserver.HTTPServer,
+    request: pytest.FixtureRequest,
+) -> None:
+    utils.expect_stream_start(httpserver)
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        '{"baton": "baton", "base_url": null}\n'
+        '{"type": "step_error", "step": 0, "error": {"message": "Tursodb error: '
+        'Parse error: no such function: turso_version"}}\n'
+    )
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": httpserver.url_for("").rstrip("/"),
+            }
+        }
+    )
+    connection = base.DatabaseWrapper(handler.settings["default"], request.node.name)
+
+    with (
+        django_db_blocker.unblock(),
+        pytest.raises(django.db.NotSupportedError) as excinfo,
+    ):
+        connection.ensure_connection()
+    connection.close()
+
+    assert str(excinfo.value) == (
+        "dj-turso requires the Turso engine: the database has no turso_version() "
+        "function."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        exceptions.EngineNotSupportedError,
+        django.db.OperationalError,
+        turso_serverless.OperationalError,
+    ]
+
+
+def test_other_error_from_turso_version_raises_it(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    httpserver: pytest_httpserver.HTTPServer,
+    request: pytest.FixtureRequest,
+) -> None:
+    utils.expect_stream_start(httpserver)
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        '{"baton": "baton", "base_url": null}\n'
+        '{"type": "step_error", "step": 0, "error": {"message": "Tursodb error: '
+        'Database is busy"}}\n'
+    )
+    handler = django.db.utils.ConnectionHandler(
+        {
+            "default": {
+                "ENGINE": "dj_turso",
+                "NAME": httpserver.url_for("").rstrip("/"),
+            }
+        }
+    )
+    connection = base.DatabaseWrapper(handler.settings["default"], request.node.name)
+
+    with (
+        django_db_blocker.unblock(),
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        connection.ensure_connection()
+    connection.close()
+
+    assert str(excinfo.value) == "Tursodb error: Database is busy"
 
 
 def test_failing_init_command_raises_operational_error(

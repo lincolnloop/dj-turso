@@ -29,6 +29,23 @@ def django_db_modify_db_settings(tmp_path_factory: pytest.TempPathFactory) -> No
     settings_dict["TEST"]["NAME"] = str(directory / "test_default.db")
 
 
+# Django checks an alias's database once per process, on its first connection:
+# checked here, so that no test's requests depend on which test connected first.
+@pytest.fixture(autouse=True, scope="session")
+def check_default_alias(
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    directory = tmp_path_factory.mktemp("check")
+    handler = django.db.utils.ConnectionHandler(
+        {"default": {"ENGINE": "dj_turso", "NAME": str(directory / "default.db")}}
+    )
+    connection = handler["default"]
+    with django_db_blocker.unblock():
+        connection.ensure_connection()
+        connection.close()
+
+
 @pytest.fixture(params=[pytest.param("pyturso", id="pyturso")])
 def target(
     django_db_blocker: pytest_django.DjangoDbBlocker, tmp_path: pathlib.Path

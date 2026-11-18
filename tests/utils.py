@@ -52,6 +52,35 @@ def get_cause_chain(exception: BaseException) -> list[type[BaseException]]:
     return chain
 
 
+# The answer to a new stream's setup pipeline: its foreign key pragma, then the
+# transaction state.
+def expect_stream_start(httpserver: pytest_httpserver.HTTPServer) -> None:
+    httpserver.expect_oneshot_request("/v3/pipeline").respond_with_json(
+        {
+            "baton": "baton",
+            "base_url": None,
+            "results": [
+                {
+                    "type": "ok",
+                    "response": {
+                        "type": "execute",
+                        "result": {
+                            "cols": [],
+                            "rows": [],
+                            "affected_row_count": 0,
+                            "last_insert_rowid": None,
+                        },
+                    },
+                },
+                {
+                    "type": "ok",
+                    "response": {"type": "get_autocommit", "is_autocommit": True},
+                },
+            ],
+        }
+    )
+
+
 class CountingProxy:
     """A keep-alive front for an HTTP/1.1 server, counting what passes through.
 

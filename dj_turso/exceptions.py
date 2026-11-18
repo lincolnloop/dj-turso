@@ -43,3 +43,11 @@ class RegexNotSupportedError(TursoBackendError, django.db.NotSupportedError):
             f"Turso cannot compile the regular expression {pattern!r}: its REGEXP "
             "follows the syntax of Rust's regex crate, not Python's re module."
         )
+
+
+class EngineNotSupportedError(TursoBackendError, django.db.NotSupportedError):
+    def __init__(self) -> None:
+        super().__init__(
+            "dj-turso requires the Turso engine: the database has no turso_version() "
+            "function."
+        )

@@ -3,9 +3,17 @@ import typing as t
 
 from django.db import utils as db_utils
 from django.db.backends.sqlite3 import base as sqlite_base
-from django.utils import asyncio
+from django.utils import asyncio, functional
 
-from dj_turso import creation, cursor, drivers, features, introspection, operations
+from dj_turso import (
+    creation,
+    cursor,
+    drivers,
+    exceptions,
+    features,
+    introspection,
+    operations,
+)
 
 # Options Django's sqlite3 backend sets for the stdlib module that no Turso
 # driver accepts.
@@ -51,6 +59,27 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
 
     def get_database_version(self) -> tuple[int, ...]:
         return SQLITE_DIALECT_VERSION
+
+    # Only whether turso_version() exists tells Turso from libSQL: its value differs
+    # between the local driver and Turso Cloud, and so orders nothing.
+    def check_database_version_supported(self) -> None:
+        super().check_database_version_supported()
+        self.get_turso_version()
+
+    def get_turso_version(self) -> str:
+        try:
+            return self.turso_version
+        except db_utils.OperationalError as exc:
+            if not str(exc).endswith("no such function: turso_version"):
+                raise
+            raise exceptions.EngineNotSupportedError from exc
+
+    @functional.cached_property
+    def turso_version(self) -> str:
+        with self.temporary_connection() as cursor:
+            cursor.execute("SELECT turso_version()")
+            row = cursor.fetchone()
+        return str(row[0])
 
     @asyncio.async_unsafe
     def get_new_connection(self, conn_params: dict[str, t.Any]) -> t.Any:

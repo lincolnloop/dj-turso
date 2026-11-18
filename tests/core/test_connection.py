@@ -163,6 +163,20 @@ def test_local_connection_waits_on_lock_for_timeout(
     assert rows == [(busy_timeout,)]
 
 
+# Django checks the database once per alias per process: the test's own alias.
+def test_turso_engine_passes_database_check(
+    driver_target: base.DatabaseWrapper, request: pytest.FixtureRequest
+) -> None:
+    connection = base.DatabaseWrapper(driver_target.settings_dict, request.node.name)
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1")
+        rows = cursor.fetchall()
+    connection.close()
+
+    assert rows == [(1,)]
+
+
 @pytest.mark.django_db(transaction=True)
 def test_threads_share_database_file() -> None:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
