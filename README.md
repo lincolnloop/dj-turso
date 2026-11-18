@@ -14,7 +14,7 @@ DATABASES = {
 }
 ```
 
-For Turso Cloud, install the `serverless` extra:
+For a Turso Cloud database on the Turso engine, install the `serverless` extra:
 
 ```shell
 pip install "dj-turso[serverless]"
@@ -42,9 +42,8 @@ OperationalError: Locking error: Failed locking file '/srv/app/default.db'. File
 
 Threads within one process share the file freely. So a local file suits development,
 tests and single-process apps, but not a server that runs several worker processes, such
-as gunicorn or uwsgi with more than one worker. Point those at a remote database, on
-sqld or Turso Cloud. A management command run while the server holds the file fails the
-same way.
+as gunicorn or uwsgi with more than one worker. Point those at Turso Cloud. A management
+command run while the server holds the file fails the same way.
 
 ## Testing your project
 
@@ -92,8 +91,8 @@ DATABASES = {
 }
 ```
 
-Or at a remote database, on sqld or Turso Cloud. dj-turso migrates it in place and never
-creates or destroys it:
+Or at a Turso Cloud database. dj-turso migrates it in place and never creates or
+destroys it:
 
 ```python
 "TEST": {"NAME": "turso://my-test-database.turso.io"},
@@ -169,7 +168,7 @@ dj-turso does not work around these yet:
 
 ## Running the tests
 
-The remote transport tests need a local server:
+The remote tests run against sqld, a local stand-in for Turso Cloud's HTTP API:
 
 ```shell
 docker compose up -d --wait
