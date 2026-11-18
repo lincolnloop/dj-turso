@@ -4,6 +4,7 @@ import collections.abc
 import contextlib
 import dataclasses
 import http
+import http.client
 import itertools
 import json
 import pathlib
@@ -13,6 +14,7 @@ import socket
 import threading
 import time
 import typing as t
+import urllib.parse
 
 import pytest_httpserver
 import turso
@@ -40,6 +42,21 @@ CHANGING_STATEMENT_REGEX = re.compile(
     r"\s*(?:INSERT|REPLACE|UPDATE|DELETE)\b", re.IGNORECASE
 )
 INSERTING_STATEMENT_REGEX = re.compile(r"\s*(?:INSERT|REPLACE)\b", re.IGNORECASE)
+
+
+# Turso's Platform API, which creates and deletes the Cloud tests' databases.
+PLATFORM_API_HOST = "api.turso.tech"
+
+TEST_DATABASE_PREFIX = "djturso-test-"
+
+# A test database's name carries the Unix time it was created at: the Platform API
+# reports none.
+TEST_DATABASE_NAME_REGEX = re.compile(
+    rf"{TEST_DATABASE_PREFIX}(?P<created_at>\d+)-[0-9a-f]+"
+)
+
+# Seconds after which a test database is a crashed run's leftover.
+STALE_TEST_DATABASE_AGE = 3600
 
 
 # The exception, then each explicit cause it was raised from.
@@ -466,6 +483,76 @@ class HranaStub:
             "affected_row_count": changes if changing else 0,
             "last_insert_rowid": last_insert_rowid if inserting else None,
         }, None
+
+
+class PlatformRequestError(Exception):
+    def __init__(self, method: str, path: str, status: int, body: str) -> None:
+        super().__init__(f"{method} {path} answered HTTP status {status}: {body}")
+        self.status = status
+
+
+@dataclasses.dataclass(frozen=True)
+class CloudDatabase:
+    hostname: str
+    auth_token: str = dataclasses.field(repr=False)
+
+
+@dataclasses.dataclass(frozen=True)
+class PlatformClient:
+    """Turso's Platform API, for one organization."""
+
+    api_token: str = dataclasses.field(repr=False)
+    organization: str
+
+    def create_database(self, name: str, group: str) -> str:
+        # The turso CLI's --tursodb sends use_tursodb: a database on the Turso engine.
+        body = {"name": name, "group": group, "use_tursodb": True}
+        return str(self.request("POST", "/databases", body)["database"]["Hostname"])
+
+    def create_database_token(self, name: str) -> str:
+        return str(self.request("POST", f"/databases/{name}/auth/tokens")["jwt"])
+
+    def delete_database(self, name: str) -> None:
+        self.request("DELETE", f"/databases/{name}")
+
+    def delete_stale_test_databases(self, group: str) -> None:
+        query = urllib.parse.urlencode({"group": group})
+        stale_before = time.time() - STALE_TEST_DATABASE_AGE
+        for database in self.request("GET", f"/databases?{query}")["databases"]:
+            match = TEST_DATABASE_NAME_REGEX.fullmatch(database["Name"])
+            if match and int(match["created_at"]) < stale_before:
+                self.delete_stale_database(database["Name"])
+
+    def delete_stale_database(self, name: str) -> None:
+        try:
+            self.delete_database(name)
+        # Another test process may have deleted it first.
+        except PlatformRequestError as exc:
+            if exc.status != http.HTTPStatus.NOT_FOUND:
+                raise
+
+    def request(
+        self, method: str, path: str, body: dict[str, t.Any] | None = None
+    ) -> dict[str, t.Any]:
+        url_path = f"/v1/organizations/{self.organization}{path}"
+        connection = http.client.HTTPSConnection(PLATFORM_API_HOST)
+        try:
+            connection.request(
+                method,
+                url_path,
+                body=None if body is None else json.dumps(body),
+                headers={
+                    "Authorization": f"Bearer {self.api_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            response = connection.getresponse()
+            content = response.read().decode()
+        finally:
+            connection.close()
+        if response.status != http.HTTPStatus.OK:
+            raise PlatformRequestError(method, url_path, response.status, content)
+        return t.cast("dict[str, t.Any]", json.loads(content))
 
 
 def relay(source: socket.socket, destination: socket.socket) -> None:

@@ -1,7 +1,9 @@
 import collections.abc
-import fcntl
+import contextlib
 import os
 import pathlib
+import secrets
+import time
 import typing as t
 import urllib.parse
 
@@ -88,21 +90,12 @@ def driver_target(
         connection.close()
 
 
-# Turso Cloud's database is shared between xdist workers: a test that writes the
-# item table holds it alone, and the table is dropped around the test.
+# The Cloud tests' database outlives each test: a test that writes the item table
+# drops it after.
 @pytest.fixture
-def item_table(
-    driver_target: base.DatabaseWrapper, tmp_path_factory: pytest.TempPathFactory
-) -> collections.abc.Iterator[None]:
-    if driver_target.alias != "cloud":
-        yield
-        return
-    # Every worker's base temporary directory shares this parent.
-    lock_path = tmp_path_factory.getbasetemp().parent / f"{driver_target.alias}.lock"
-    with lock_path.open("w") as lock_file:
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
-        drop_item_table(driver_target)
-        yield
+def item_table(driver_target: base.DatabaseWrapper) -> collections.abc.Iterator[None]:
+    yield
+    if driver_target.alias == "cloud":
         driver_target.close()
         drop_item_table(driver_target)
 
@@ -136,14 +129,39 @@ def loopback_network(request: pytest.FixtureRequest) -> None:
     allow_hosts(request, LOOPBACK_HOST)
 
 
+# A Turso Cloud database of each test process's own, swept of crashed runs' leftovers
+# first. One per xdist worker: the Cloud tests write tables of the same names.
+@pytest.fixture(scope="session")
+def cloud_database() -> collections.abc.Iterator[utils.CloudDatabase]:
+    api_token = os.environ.get("TURSO_API_TOKEN", "")
+    organization = os.environ.get("TURSO_ORG", "")
+    group = os.environ.get("TURSO_TEST_GROUP", "")
+    if not (api_token and organization and group):
+        pytest.skip("needs TURSO_API_TOKEN, TURSO_ORG and TURSO_TEST_GROUP")
+    client = utils.PlatformClient(api_token, organization)
+    name = f"{utils.TEST_DATABASE_PREFIX}{int(time.time())}-{secrets.token_hex(4)}"
+    with allow_platform_api():
+        client.delete_stale_test_databases(group)
+        hostname = client.create_database(name, group)
+    try:
+        with allow_platform_api():
+            auth_token = client.create_database_token(name)
+        yield utils.CloudDatabase(hostname, auth_token)
+    finally:
+        with allow_platform_api():
+            client.delete_database(name)
+
+
 @pytest.fixture
-def cloud_settings(request: pytest.FixtureRequest) -> dict[str, t.Any]:
-    url = os.environ.get("TURSO_DATABASE_URL", "")
-    auth_token = os.environ.get("TURSO_AUTH_TOKEN", "")
-    if not (url and auth_token):
-        pytest.skip("needs TURSO_DATABASE_URL and TURSO_AUTH_TOKEN")
-    allow_hosts(request, str(urllib.parse.urlsplit(url).hostname))
-    return {"ENGINE": "dj_turso", "NAME": url, "OPTIONS": {"auth_token": auth_token}}
+def cloud_settings(
+    cloud_database: utils.CloudDatabase, request: pytest.FixtureRequest
+) -> dict[str, t.Any]:
+    allow_hosts(request, cloud_database.hostname)
+    return {
+        "ENGINE": "dj_turso",
+        "NAME": f"turso://{cloud_database.hostname}",
+        "OPTIONS": {"auth_token": cloud_database.auth_token},
+    }
 
 
 # Turso Cloud's HTTP API on a database of the test's own. Its streams idle out sooner
@@ -254,6 +272,18 @@ def allow_hosts(request: pytest.FixtureRequest, host: str) -> None:
     allowed_hosts.add(host)
     pytest_socket.enable_socket()
     pytest_socket.socket_allow_hosts(sorted(allowed_hosts))
+
+
+# Only the fixture's own Platform API calls reach it; the test's fixtures allow its
+# hosts again after.
+@contextlib.contextmanager
+def allow_platform_api() -> collections.abc.Iterator[None]:
+    pytest_socket.enable_socket()
+    pytest_socket.socket_allow_hosts([utils.PLATFORM_API_HOST])
+    try:
+        yield
+    finally:
+        pytest_socket.disable_socket()
 
 
 def drop_item_table(connection: base.DatabaseWrapper) -> None:
