@@ -152,6 +152,7 @@ def test_bitand_combines_operands() -> None:
         pytest.param(370, -1, 365, id="integer"),
         pytest.param(-370, -1, -365, id="negative-half"),
         pytest.param(0, -3, 365, id="beyond-value"),
+        pytest.param(0, -309, 365, id="beyond-float-range"),
         pytest.param(370, -1.5, 365, id="fractional"),
         pytest.param(365, -0.5, 365, id="fractional-above-minus-one"),
     ],

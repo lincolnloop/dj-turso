@@ -24,8 +24,11 @@ NATIVE_TEMPLATES: dict[type[expressions.Func], str] = {
 }
 
 # Turso, like SQLite, ignores a negative ROUND precision; scale to units and back.
-# POWER returns a real, so integer operands do not divide as integers.
-ROUND_TEMPLATE = "(ROUND(%(expressions)s / {scale}, MAX({precision}, 0)) * {scale})"
+# POWER returns a real, so integer operands do not divide as integers. Past 10^308
+# it overflows to infinity, where the quotient is 0; capped, 0 times it is not NULL.
+ROUND_TEMPLATE = (
+    "(ROUND(%(expressions)s / {scale}, MAX({precision}, 0)) * MIN({scale}, 1e308))"
+)
 # Truncated to an integer, as ROUND truncates its own precision.
 ROUND_SCALE_TEMPLATE = "POWER(10, -MIN(CAST({precision} AS INTEGER), 0))"
 
