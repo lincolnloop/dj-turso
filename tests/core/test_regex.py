@@ -93,6 +93,33 @@ def test_regex_turso_compiles_matches(
     assert list(matches.values_list("name", flat=True)) == names
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("names", "pattern"),
+    [
+        pytest.param(["foo"], r"foo$", id="end-of-text"),
+        pytest.param(["foo", "foo\n"], r"(?m)foo$", id="end-of-line"),
+    ],
+)
+def test_regex_dollar_anchors_to_end_of_text(names: list[str], pattern: str) -> None:
+    models.Tag.objects.bulk_create(models.Tag(name=name) for name in ["foo", "foo\n"])
+
+    matches = models.Tag.objects.filter(name__regex=pattern).order_by("name")
+
+    assert list(matches.values_list("name", flat=True)) == names
+
+
+@pytest.mark.django_db
+def test_regex_possessive_quantifier_repeats_repetition() -> None:
+    models.Tag.objects.create(name="aa")
+
+    names = models.Tag.objects.filter(name__regex=r"a*+a").values_list(
+        "name", flat=True
+    )
+
+    assert list(names) == ["aa"]
+
+
 # The check's cache lasts the process: a pattern of its own keeps the test independent.
 @pytest.mark.django_db
 def test_regex_pattern_is_checked_once() -> None:
