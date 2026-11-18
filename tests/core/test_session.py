@@ -521,14 +521,18 @@ def test_transaction_rolled_back_for_idling_is_lost(
             proxied_target.commit()
 
     assert str(excinfo.value) == (
-        "Lost the connection to the remote database inside a transaction: whether "
-        "it committed is unknown, and this connection cannot be used again."
+        "The remote database rolled back the transaction for idling: it did not "
+        "commit, and this connection cannot be used again."
     )
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
         session.LostTransactionError,
         protocol.ServerError,
     ]
+    assert str(commit_excinfo.value) == (
+        "The remote database rolled back the transaction for idling: it did not "
+        "commit, and this connection cannot be used again."
+    )
     assert utils.get_cause_chain(commit_excinfo.value) == [
         django.db.OperationalError,
         session.LostTransactionError,

@@ -36,13 +36,24 @@ FOREIGN_KEYS_ASSIGNMENT_REGEX = re.compile(
 )
 
 
+# Turso Cloud's answer to a statement on a transaction it rolled back for idling.
+IDLE_ROLLBACK_MESSAGE = (
+    "interactive transaction was rolled back because the stream was idle for too long"
+)
+
+
 class LostTransactionError(
     exceptions.TursoBackendError, turso_serverless.OperationalError
 ):
-    def __init__(self) -> None:
+    def __init__(self, *, rolled_back: bool = False) -> None:
+        if rolled_back:
+            loss = "The remote database rolled back the transaction for idling"
+            outcome = "it did not commit"
+        else:
+            loss = "Lost the connection to the remote database inside a transaction"
+            outcome = "whether it committed is unknown"
         super().__init__(
-            "Lost the connection to the remote database inside a transaction: whether "
-            "it committed is unknown, and this connection cannot be used again."
+            f"{loss}: {outcome}, and this connection cannot be used again."
         )
 
 
@@ -56,6 +67,7 @@ class KeepAliveSession(serverless_session.Session):
         # Set while the connection is to a proxy that forwards each request whole.
         self.forward_proxy_headers: dict[str, str] | None = None
         self.transaction_lost = False
+        self.transaction_rolled_back = False
         self.setup_statements: list[str] = []
         self.foreign_keys_statement: str | None = None
         self.starting_stream = False
@@ -85,7 +97,14 @@ class KeepAliveSession(serverless_session.Session):
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
                 self.transaction_lost = True
-                raise LostTransactionError from exc
+                self.transaction_rolled_back = (
+                    isinstance(exc, protocol.ServerError)
+                    and exc.code == "SQLITE_BUSY"
+                    and IDLE_ROLLBACK_MESSAGE in str(exc)
+                )
+                raise LostTransactionError(
+                    rolled_back=self.transaction_rolled_back
+                ) from exc
             raise
         if in_transaction and self.stream_was_reset:
             self.transaction_lost = True
@@ -104,7 +123,7 @@ class KeepAliveSession(serverless_session.Session):
     # Like a broken PostgreSQL connection, nothing runs again until Django closes it.
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.transaction_lost:
-            raise LostTransactionError
+            raise LostTransactionError(rolled_back=self.transaction_rolled_back)
         # Outside a transaction, an idle stream is replaced, not sent to: Turso Cloud
         # may have forgotten it. Inside one, Turso Cloud answers if it rolled it back.
         if (
@@ -251,12 +270,12 @@ class KeepAliveConnection(turso_serverless.Connection):
     # closes this one.
     def commit(self) -> None:
         if self.session.transaction_lost:
-            raise LostTransactionError
+            raise LostTransactionError(rolled_back=self.session.transaction_rolled_back)
         super().commit()
 
     def rollback(self) -> None:
         if self.session.transaction_lost:
-            raise LostTransactionError
+            raise LostTransactionError(rolled_back=self.session.transaction_rolled_back)
         super().rollback()
 
 
