@@ -250,6 +250,35 @@ def test_trunc_date_keeps_date_of_datetime() -> None:
 
 
 @pytest.mark.django_db
+def test_hour_lookup_in_database_time_zone_reads_stored_hour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    use_database_time_zone(monkeypatch, "Europe/Paris")
+    models.Event.objects.create(start=dt.datetime(2016, 1, 1, 8, 30, tzinfo=dt.UTC))
+
+    with timezone.override("Europe/Paris"):
+        count = models.Event.objects.filter(start__hour=9).count()
+
+    assert count == 1
+
+
+@pytest.mark.django_db
+def test_hour_lookup_outside_database_time_zone_raises_not_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    use_database_time_zone(monkeypatch, "Europe/Paris")
+    queryset = models.Event.objects.filter(start__hour=9)
+
+    with pytest.raises(django.db.NotSupportedError) as excinfo:
+        queryset.count()
+
+    assert str(excinfo.value) == (
+        "Turso's date functions cannot convert from the database time zone "
+        "'Europe/Paris' to 'UTC'. Query in 'Europe/Paris' instead."
+    )
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "function",
     [
@@ -592,3 +621,18 @@ def test_duration_with_invalid_connector_raises_database_error(
         list(queryset)
 
     assert str(excinfo.value) == f"Invalid connector for timedelta: {connector}."
+
+
+# ---
+
+
+# As Django's own tests do: the connection caches its time zone, so the cached values
+# are read first for monkeypatch to restore.
+def use_database_time_zone(monkeypatch: pytest.MonkeyPatch, tzname: str) -> None:
+    connection = django.db.connections["default"]
+    monkeypatch.setattr(
+        connection, "settings_dict", {**connection.settings_dict, "TIME_ZONE": tzname}
+    )
+    for name in ("timezone", "timezone_name"):
+        getattr(connection, name)
+        monkeypatch.delattr(connection, name)
