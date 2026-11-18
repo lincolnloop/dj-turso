@@ -168,9 +168,9 @@ dj-turso does not work around these yet:
 
 ## Running the tests
 
-The remote tests run against sqld, a local stand-in for Turso Cloud's HTTP API:
+The remote tests run against a local stub of Turso Cloud's HTTP API, so they need no
+server:
 
 ```shell
-docker compose up -d --wait
 uvx --with tox-uv tox
 ```

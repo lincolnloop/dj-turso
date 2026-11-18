@@ -18,8 +18,8 @@ from turso_serverless import session as serverless_session
 
 from dj_turso import exceptions
 
-# Seconds a server stream outlives its last request, per Turso's HTTP API docs: sqld
-# expires any stream, and Turso Cloud rolls back a transaction, after it.
+# Seconds a server stream outlives its last request, per Turso's HTTP API docs: Turso
+# Cloud rolls back a transaction idle past it.
 STREAM_IDLE_TIMEOUT = 10
 
 # The server's idle clock starts when its answer leaves, the client's when it lands:
@@ -112,8 +112,8 @@ class KeepAliveSession(serverless_session.Session):
     def _post(self, path: str, body: dict[str, t.Any]) -> bytes:
         if self.lost_transaction_error is not None:
             raise self.lost_transaction_error
-        # Never sent to an expired stream: sqld would refuse it, and Turso Cloud would
-        # answer that it rolled the transaction back.
+        # Never sent to an expired stream: Turso Cloud would answer that it rolled the
+        # transaction back, or that the stream is gone.
         if (
             self._baton is not None
             and time.monotonic() - self.last_response_time
@@ -326,8 +326,8 @@ def is_closed_by_server(connection: http.client.HTTPConnection) -> bool:
         return bool(selector.select(timeout=0))
 
 
-# The server's JSON "error" (Turso Cloud) or "message" (sqld), as upstream reports a
-# non-200 status; bodies that are not JSON carry none.
+# The server's JSON "error" or "message", as upstream reports a non-200 status; bodies
+# that are not JSON carry none.
 def get_status_message(status: int, raw: bytes) -> str:
     try:
         parsed = json.loads(raw)
