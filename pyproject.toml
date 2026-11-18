@@ -53,7 +53,7 @@ classifiers = [
 ]
 dependencies = [
   "Django>=6.1,<6.2",
-  "pyturso>=0.8.3",
+  "pyturso>=0.8.3,<0.9",
 ]
 description = "Django database backend for Turso, local files and Turso Cloud."
 dynamic = ["version"]

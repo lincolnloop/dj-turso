@@ -495,7 +495,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "django", specifier = ">=6.1,<6.2" },
-    { name = "pyturso", specifier = ">=0.8.3" },
+    { name = "pyturso", specifier = ">=0.8.3,<0.9" },
     { name = "turso-serverless", marker = "extra == 'serverless'", specifier = ">=0.1.0,<0.2" },
 ]
 provides-extras = ["serverless"]
