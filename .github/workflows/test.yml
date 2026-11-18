@@ -35,6 +35,13 @@ jobs:
             name: mypy-lowest
           - env: py315-django61-mypy
             name: mypy-highest
+    # The dev job runs the Cloud tests on a database every branch shares, so one runs
+    # at a time across branches; every other job's group is its own.
+    concurrency:
+      group: >-
+        ${{ matrix.env == 'dev' && 'turso-cloud'
+        || format('{0}-{1}', github.run_id, matrix.env) }}
+      cancel-in-progress: false
     env:
       # Worker count for tox's `-n auto`; a runner has more cores than the suites
       # profitably use, and 2 is enough to keep the parallel path exercised.
