@@ -496,16 +496,41 @@ def test_stream_expiry_inside_transaction_loses_transaction_unsent(
             cursor.execute("SELECT 1")
 
     assert str(excinfo.value) == (
-        "Lost the connection to the remote database inside a transaction: whether "
-        "it committed is unknown, and this connection cannot be used again."
+        "The remote transaction was idle for over 9 seconds, near the server's 10 "
+        "second limit, so it was abandoned: it did not commit, and this connection "
+        "cannot be used again."
     )
     assert utils.get_cause_chain(excinfo.value) == [
         django.db.OperationalError,
-        session.LostTransactionError,
+        session.IdleTransactionError,
     ]
     # Setup, BEGIN, then the old stream's close.
     assert proxy.received_request_count == 3
     assert proxied_target.is_usable() is False
+
+
+@pytest.mark.timeout(30)
+def test_stream_expiry_inside_transaction_fails_every_later_statement_alike(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        time.sleep(IDLE_PAST_STREAM_EXPIRY)
+        with pytest.raises(django.db.OperationalError):
+            cursor.execute("SELECT 1")
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("COMMIT")
+
+    assert str(excinfo.value) == (
+        "The remote transaction was idle for over 9 seconds, near the server's 10 "
+        "second limit, so it was abandoned: it did not commit, and this connection "
+        "cannot be used again."
+    )
+    assert utils.get_cause_chain(excinfo.value) == [
+        django.db.OperationalError,
+        session.IdleTransactionError,
+    ]
+    assert proxy.received_request_count == 3
 
 
 # sqld names the error "message" where Turso Cloud says "error"; as upstream, only
