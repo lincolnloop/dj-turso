@@ -38,10 +38,12 @@ FOREIGN_KEYS_ASSIGNMENT_REGEX = re.compile(
 
 # Transaction statements that return nothing: held, and sent as the first steps of
 # the next statement's request, to save their round trips.
-HELD_STATEMENT_REGEX = re.compile(
-    r"\s*(?:BEGIN(?:\s+(?:DEFERRED|IMMEDIATE|EXCLUSIVE))?(?:\s+TRANSACTION)?"
-    r"|SAVEPOINT\s+\S+|RELEASE(?:\s+SAVEPOINT)?\s+\S+)\s*;?\s*",
+BEGIN_REGEX = re.compile(
+    r"\s*BEGIN(?:\s+(?:DEFERRED|IMMEDIATE|EXCLUSIVE))?(?:\s+TRANSACTION)?\s*;?\s*",
     re.IGNORECASE,
+)
+SAVEPOINT_REGEX = re.compile(
+    r"\s*(?:SAVEPOINT|RELEASE(?:\s+SAVEPOINT)?)\s+\S+\s*;?\s*", re.IGNORECASE
 )
 
 # Turso Cloud's answer to a statement on a transaction it rolled back for idling.
@@ -82,6 +84,10 @@ class KeepAliveSession(serverless_session.Session):
         self.stream_was_reset = False
         self.last_response_time = time.monotonic()
         self.held_statements: list[str] = []
+        # Whether the open transaction began with BEGIN: only then can no RELEASE
+        # end it, and savepoint statements are held too.
+        self.transaction_began = False
+        self.held_begin_refused = False
 
     # The driver reads a transaction as open from this, and skips COMMIT and
     # ROLLBACK otherwise.
@@ -105,17 +111,24 @@ class KeepAliveSession(serverless_session.Session):
             protocol.build_batch_step(sql, args, named_args)
         except (TypeError, ValueError) as exc:
             raise turso_serverless.ProgrammingError(str(exc)) from exc
-        if args is None and named_args is None and HELD_STATEMENT_REGEX.fullmatch(sql):
-            self.held_statements.append(sql)
-            return serverless_session.StmtResult(
-                columns=[], rows=[], affected_rows=0, last_insert_rowid=None
-            )
-        in_transaction = not self._autocommit
+        if self.autocommit:
+            self.transaction_began = False
+        if args is None and named_args is None:
+            if BEGIN_REGEX.fullmatch(sql):
+                self.transaction_began = True
+                self.held_statements.append(sql)
+                return get_empty_result()
+            if self.transaction_began and SAVEPOINT_REGEX.fullmatch(sql):
+                self.held_statements.append(sql)
+                return get_empty_result()
+        # A held BEGIN counts: once sent, whether it ran is known only from the answer.
+        in_transaction = not self.autocommit
         self.stream_was_reset = False
+        self.held_begin_refused = False
         try:
             result = self.execute_batch(sql, args, named_args, want_rows)
         except RuntimeError as exc:
-            if in_transaction and self._autocommit:
+            if in_transaction and self._autocommit and not self.held_begin_refused:
                 self.transaction_lost = True
                 self.transaction_rolled_back = (
                     isinstance(exc, protocol.ServerError)
@@ -163,20 +176,22 @@ class KeepAliveSession(serverless_session.Session):
         )
         decoder = CursorDecoder(statement_step=len(steps) - 2)
         try:
-            cursor_response, *entries = [
-                json.loads(line) for line in raw.decode().splitlines() if line.strip()
-            ]
+            cursor_response, entry_lines = parse_cursor_body(raw)
             self._update_stream(
                 cursor_response.get("baton"), cursor_response.get("base_url")
             )
-            for entry in entries:
-                decoder.feed(entry)
+            for line in entry_lines:
+                decoder.feed(parse_json_line(line, "invalid cursor entry"))
                 if decoder.fatal is not None:
                     break
-        except (protocol.ProtocolError, ValueError) as exc:
+        except protocol.ProtocolError:
             self._reset_stream()
-            message = f"invalid cursor response: {exc}"
-            raise protocol.ProtocolError(message) from exc
+            raise
+        # A held BEGIN the server refused left no transaction to lose.
+        self.held_begin_refused = decoder.failed_step is not None and any(
+            BEGIN_REGEX.fullmatch(held_sql)
+            for held_sql in held_statements[: decoder.failed_step + 1]
+        )
         if decoder.fatal is not None:
             self._refresh_autocommit()
             raise decoder.step_error or decoder.fatal
@@ -205,6 +220,8 @@ class KeepAliveSession(serverless_session.Session):
             > STREAM_IDLE_TIMEOUT - STREAM_IDLE_MARGIN
         ):
             self.close_stream()
+            # Nothing was sent to it: no transaction of its own was lost.
+            self.stream_was_reset = False
         if self._baton is None and not self.starting_stream:
             self.start_stream()
             body = body | {"baton": self._baton}
@@ -339,6 +356,7 @@ class CursorDecoder:
             columns=[], rows=[], affected_rows=0, last_insert_rowid=None
         )
         self.step_error: protocol.ServerError | None = None
+        self.failed_step: int | None = None
         self.fatal: protocol.ServerError | None = None
         self.probe_executed = False
         self.probe_unreliable = False
@@ -355,20 +373,22 @@ class CursorDecoder:
                     ]
             case "row" if self.current_step == self.statement_step:
                 self.result.rows.append(
-                    tuple(protocol.decode_value(value) for value in entry["row"])
+                    tuple(
+                        protocol.decode_value(value) for value in entry.get("row") or []
+                    )
                 )
             case "step_end" if self.current_step == self.statement_step:
                 self.result.affected_rows = entry.get("affected_row_count") or 0
-                rowid = entry.get("last_insert_rowid")
-                self.result.last_insert_rowid = None if rowid is None else int(rowid)
+                self.result.last_insert_rowid = get_rowid(entry)
             case "step_error":
                 if entry.get("step") == self.probe_step:
                     self.probe_unreliable = True
                 else:
-                    self.step_error = get_server_error(entry["error"])
+                    self.failed_step = entry.get("step")
+                    self.step_error = get_server_error(entry.get("error"))
                 self.current_step = None
             case "error":
-                self.fatal = get_server_error(entry["error"])
+                self.fatal = get_server_error(entry.get("error"))
 
 
 class KeepAliveConnection(turso_serverless.Connection):
@@ -433,12 +453,50 @@ def get_proxy(scheme: str, netloc: str) -> tuple[str, dict[str, str]] | None:
     return urllib.parse.unquote(parts.netloc.rpartition("@")[2]), headers
 
 
-def get_server_error(error: dict[str, t.Any]) -> protocol.ServerError:
+def get_empty_result() -> serverless_session.StmtResult:
+    return serverless_session.StmtResult(
+        columns=[], rows=[], affected_rows=0, last_insert_rowid=None
+    )
+
+
+# As upstream, tolerating missing fields.
+def get_server_error(error: dict[str, t.Any] | None) -> protocol.ServerError:
+    error = error if isinstance(error, dict) else {}
+    message = error.get("message")
     return protocol.ServerError(
-        error["message"],
+        message if isinstance(message, str) else "unknown error",
         code=error.get("code"),
         extended_code=error.get("extended_code"),
     )
+
+
+def get_rowid(step_end: dict[str, t.Any]) -> int | None:
+    rowid = step_end.get("last_insert_rowid")
+    if rowid is None:
+        return None
+    try:
+        return int(rowid)
+    except (TypeError, ValueError) as exc:
+        message = f"invalid rowid in server response: {exc}"
+        raise protocol.ProtocolError(message) from exc
+
+
+# The cursor response line, parsed, and the entry lines after it.
+def parse_cursor_body(raw: bytes) -> tuple[dict[str, t.Any], list[str]]:
+    lines = [line for line in raw.decode().splitlines() if line.strip()]
+    if not lines:
+        message = "cursor response body ended before the cursor response line"
+        raise protocol.ProtocolError(message)
+    return parse_json_line(lines[0], "invalid cursor response"), lines[1:]
+
+
+def parse_json_line(line: str, label: str) -> dict[str, t.Any]:
+    try:
+        parsed: dict[str, t.Any] = json.loads(line)
+    except ValueError as exc:
+        message = f"{label}: {exc}"
+        raise protocol.ProtocolError(message) from exc
+    return parsed
 
 
 def connect_with_untimed_reads(connection: http.client.HTTPConnection) -> None:
