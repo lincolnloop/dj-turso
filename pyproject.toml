@@ -4,17 +4,9 @@ requires = ["hatch-vcs==0.5.0", "hatchling==1.33.0"]
 
 [dependency-groups]
 dev = [
-  "argon2-cffi==25.1.0",
-  "bcrypt==5.0.0",
-  "build==1.6.1",
   "defusedxml==0.7.1",
   "django-stubs==6.1.2",
-  "docutils==0.23",
-  "hatch-vcs==0.5.0",
-  "hatchling==1.33.0",
-  "jinja2==3.1.6",
   "mypy==2.4.1",
-  "numpy==2.5.4",
   "pillow==13.0.0",
   "pre-commit==4.7.0",
   "pytest-cov==7.1.0",
@@ -29,7 +21,6 @@ dev = [
   "sqlparse==0.6.1",
   "turso-serverless==0.1.0",
   "types-defusedxml==0.7.0.20260504",
-  "tzdata==2026.6",
 ]
 
 [project]
