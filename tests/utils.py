@@ -339,11 +339,14 @@ class HranaStub:
         self, stream_id: str, stream: Stream, body: dict[str, t.Any], rolled_back: bool
     ) -> wrappers.Response:
         entries = []
+        outcomes: dict[int, bool] = {}
         for index, step in enumerate(body["batch"]["steps"]):
-            # The driver's only condition: whether the connection is in autocommit.
-            if "condition" in step and stream.connection.in_transaction:
+            if "condition" in step and not is_condition_met(
+                step["condition"], outcomes, stream
+            ):
                 continue
             result, error = self.run_statement(stream, step["stmt"], rolled_back)
+            outcomes[index] = error is None
             if error is not None:
                 entries.append({"type": "step_error", "step": index, "error": error})
                 continue
@@ -600,3 +603,13 @@ def make_json_response(
     return wrappers.Response(
         json.dumps(body), status=status, content_type="application/json"
     )
+
+
+# The Hrana batch conditions the clients send: whether a step ran without error,
+# and whether the connection is in autocommit.
+def is_condition_met(
+    condition: dict[str, t.Any], outcomes: dict[int, bool], stream: Stream
+) -> bool:
+    if condition["type"] == "ok":
+        return outcomes.get(condition["step"]) is True
+    return not stream.connection.in_transaction

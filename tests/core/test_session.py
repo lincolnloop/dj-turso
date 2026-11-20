@@ -1,6 +1,7 @@
 import collections.abc
 import http
 import http.client
+import json
 import os
 import resource
 import socket
@@ -43,6 +44,16 @@ def proxied_alias(
     django.db.connections["proxied"] = proxied_target
     yield "proxied"
     del django.db.connections["proxied"]
+
+
+# Each driver's target under its alias in Django's own handler, for transaction.atomic.
+@pytest.fixture
+def driver_alias(
+    driver_target: base.DatabaseWrapper,
+) -> collections.abc.Iterator[str]:
+    django.db.connections[driver_target.alias] = driver_target
+    yield driver_target.alias
+    del django.db.connections[driver_target.alias]
 
 
 def test_queries_reuse_one_tcp_connection(
@@ -130,6 +141,7 @@ def test_failed_request_inside_transaction_raises_and_poisons_connection(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         proxy.fail_next_request()
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
@@ -171,6 +183,7 @@ def test_lost_transaction_in_atomic_block_closes_connection(
     @transaction.atomic(using=proxied_alias)
     def lose_transaction() -> None:
         with proxied_target.cursor() as cursor:
+            cursor.execute("SELECT 0")
             proxy.fail_next_request()
             cursor.execute("SELECT 1")
 
@@ -193,6 +206,7 @@ def test_lost_transaction_caught_in_atomic_block_fails_commit_and_closes_connect
     @transaction.atomic(using=proxied_alias)
     def lose_transaction_quietly() -> None:
         with proxied_target.cursor() as cursor:
+            cursor.execute("SELECT 0")
             proxy.fail_next_request()
             with pytest.raises(django.db.OperationalError):
                 cursor.execute("SELECT 1")
@@ -215,6 +229,7 @@ def test_lost_transaction_fails_every_later_statement_unsent(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         proxy.fail_next_request()
         with pytest.raises(django.db.OperationalError):
             cursor.execute("SELECT 1")
@@ -237,6 +252,7 @@ def test_malformed_response_inside_transaction_loses_transaction(
 ) -> None:
     with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         httpserver.expect_oneshot_request("/v3/cursor").respond_with_data("not json\n")
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
@@ -249,6 +265,7 @@ def test_malformed_response_inside_transaction_loses_transaction(
         django.db.OperationalError,
         session.LostTransactionError,
         protocol.ProtocolError,
+        json.JSONDecodeError,
     ]
     assert stub_target.is_usable() is False
 
@@ -260,6 +277,7 @@ def test_malformed_state_answer_inside_transaction_loses_transaction(
 ) -> None:
     with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
             '{"baton": "baton", "base_url": null}\n'
             '{"type": "error", "error": {"message": "cursor failed"}}\n'
@@ -287,6 +305,7 @@ def test_stream_ended_after_successful_statement_loses_transaction(
 ) -> None:
     with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
             '{"baton": "baton", "base_url": null}\n'
             '{"type": "step_begin", "step": 0, "cols": [{"name": "1"}]}\n'
@@ -504,8 +523,9 @@ def test_idle_transaction_is_sent_to_its_stream(
         rows = cursor.fetchall()
 
     assert rows == [("after",), ("before",)]
-    # Setup, CREATE, BEGIN, both INSERTs and COMMIT, all on one stream, then SELECT.
-    assert proxy.received_request_count == 7
+    # Setup, CREATE, BEGIN with the first INSERT, the second, and COMMIT, all on one
+    # stream, then SELECT.
+    assert proxy.received_request_count == 6
 
 
 @pytest.mark.timeout(30)
@@ -514,6 +534,7 @@ def test_transaction_rolled_back_for_idling_is_lost(
 ) -> None:
     with proxied_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         time.sleep(3 * session.STREAM_IDLE_TIMEOUT)
         with pytest.raises(django.db.OperationalError) as excinfo:
             cursor.execute("SELECT 1")
@@ -545,6 +566,7 @@ def test_stream_not_found_inside_transaction_loses_transaction(
 ) -> None:
     with stub_target.cursor() as cursor:
         cursor.execute("BEGIN")
+        cursor.execute("SELECT 0")
         httpserver.expect_oneshot_request("/v3/cursor").respond_with_json(
             {"error": "stream not found: 0:1"}, status=http.HTTPStatus.NOT_FOUND
         )
@@ -800,3 +822,336 @@ def test_https_proxy_from_environment_tunnels_queries(
         f"Proxy-Authorization: Basic dXNAZXI6cDpzcw==\r\n"
         f"Host: {host}:443\r\n\r\n".encode()
     ]
+
+
+def test_atomic_block_sends_begin_with_first_statement(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with transaction.atomic(using=proxied_alias), proxied_target.cursor() as cursor:
+        cursor.execute("INSERT INTO item VALUES ('a')")
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("a",)]
+    # Setup, CREATE, BEGIN with INSERT, COMMIT, then SELECT.
+    assert proxy.received_request_count == 5
+
+
+def test_nested_atomic_block_sends_savepoints_with_neighbors(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with (
+        transaction.atomic(using=proxied_alias),
+        transaction.atomic(using=proxied_alias),
+        proxied_target.cursor() as cursor,
+    ):
+        cursor.execute("INSERT INTO item VALUES ('a')")
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("a",)]
+    # Setup, CREATE, BEGIN and SAVEPOINT with INSERT, RELEASE with COMMIT, then
+    # SELECT.
+    assert proxy.received_request_count == 5
+
+
+def test_empty_atomic_block_sends_one_request(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.ensure_connection()
+
+    with transaction.atomic(using=proxied_alias):
+        pass
+
+    # Setup, then BEGIN with COMMIT.
+    assert proxy.received_request_count == 2
+
+
+@pytest.mark.parametrize(
+    "statements",
+    [
+        pytest.param(["begin"], id="lowercase"),
+        pytest.param(["BEGIN IMMEDIATE TRANSACTION"], id="immediate"),
+        pytest.param(["BEGIN", ' SAVEPOINT "s1" ;'], id="savepoint"),
+        pytest.param(["BEGIN", 'SAVEPOINT "s1"', 'RELEASE "s1"'], id="release"),
+    ],
+)
+def test_transaction_statements_wait_for_next_query(
+    proxied_target: base.DatabaseWrapper,
+    proxy: utils.CountingProxy,
+    statements: list[str],
+) -> None:
+    proxied_target.ensure_connection()
+
+    with proxied_target.cursor() as cursor:
+        for sql in statements:
+            cursor.execute(sql)
+        sent_after_statements = proxy.received_request_count
+        cursor.execute("SELECT 1")
+        rows = cursor.fetchall()
+
+    assert rows == [(1,)]
+    assert sent_after_statements == 1
+    assert proxied_target.connection.in_transaction is True
+    assert proxy.received_request_count == 2
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        pytest.param("/* BEGIN */ SELECT 1", id="comment"),
+        pytest.param("SELECT 'BEGIN'", id="literal"),
+        pytest.param('SAVEPOINT "s1"', id="savepoint-outside-transaction"),
+    ],
+)
+def test_other_statement_is_sent_at_once(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy, sql: str
+) -> None:
+    proxied_target.ensure_connection()
+
+    with proxied_target.cursor() as cursor:
+        cursor.execute(sql)
+
+    assert proxy.received_request_count == 2
+
+
+def test_failed_held_statement_raises_at_next_query_and_skips_it(
+    proxied_target: base.DatabaseWrapper,
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+        cursor.execute("BEGIN")
+        cursor.execute('RELEASE SAVEPOINT "missing"')
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("INSERT INTO item VALUES ('a')")
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+        proxied_target.rollback()
+
+    assert str(excinfo.value) == (
+        "Tursodb error: Transaction error: no such savepoint: missing"
+    )
+    assert rows == []
+
+
+def test_executescript_commits_held_transaction_first(
+    proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    proxied_target.ensure_connection()
+
+    with proxied_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        cursor.executescript("SELECT 1;")
+
+    assert proxied_target.connection.in_transaction is False
+    # Setup, BEGIN with COMMIT, then the script.
+    assert proxy.received_request_count == 3
+
+
+def test_failed_request_carrying_held_begin_loses_transaction(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with transaction.atomic(using=proxied_alias), proxied_target.cursor() as cursor:
+        proxy.fail_next_request()
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("INSERT INTO item VALUES ('a')")
+        with pytest.raises(django.db.OperationalError) as later_excinfo:
+            cursor.execute("INSERT INTO item VALUES ('b')")
+        transaction.set_rollback(True, using=proxied_alias)
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert str(later_excinfo.value) == str(excinfo.value)
+    assert rows == []
+
+
+def test_held_begin_refused_by_server_keeps_connection_usable(
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
+) -> None:
+    stub_target.ensure_connection()
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        '{"baton": null, "base_url": null}\n'
+        '{"type": "step_error", "step": 0, "error": '
+        '{"message": "database is locked", "code": "SQLITE_BUSY"}}\n'
+        '{"type": "step_begin", "step": 2, "cols": []}\n'
+        '{"type": "step_end", "affected_row_count": 0, "last_insert_rowid": null}\n'
+    )
+
+    with stub_target.cursor() as cursor:
+        cursor.execute("BEGIN IMMEDIATE")
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == "database is locked"
+    assert stub_target.is_usable() is True
+    assert stub_target.connection.in_transaction is False
+
+
+def test_idle_atomic_block_before_first_statement_runs_on_new_stream(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper, proxy: utils.CountingProxy
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with transaction.atomic(using=proxied_alias), proxied_target.cursor() as cursor:
+        time.sleep(session.STREAM_IDLE_TIMEOUT + SECONDS_PAST_STREAM_EXPIRY)
+        cursor.execute("INSERT INTO item VALUES ('a')")
+    with proxied_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("a",)]
+    # Setup, CREATE, the idle stream's close, setup again, BEGIN with INSERT, COMMIT,
+    # then SELECT.
+    assert proxy.received_request_count == 7
+
+
+@pytest.mark.usefixtures("item_table")
+def test_nested_atomic_blocks_commit_and_roll_back_savepoints(
+    driver_alias: str, driver_target: base.DatabaseWrapper
+) -> None:
+    with driver_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT)")
+
+    with transaction.atomic(using=driver_alias), driver_target.cursor() as cursor:
+        with transaction.atomic(using=driver_alias):
+            cursor.execute("INSERT INTO item VALUES ('kept')")
+        with transaction.atomic(using=driver_alias):
+            cursor.execute("INSERT INTO item VALUES ('discarded')")
+            transaction.set_rollback(True, using=driver_alias)
+    with driver_target.cursor() as cursor:
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("kept",)]
+
+
+def test_release_ending_savepoint_transaction_keeps_later_errors(
+    proxied_target: base.DatabaseWrapper,
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (name TEXT UNIQUE)")
+        cursor.execute('SAVEPOINT "s1"')
+        cursor.execute("INSERT INTO item VALUES ('a')")
+        cursor.execute('RELEASE "s1"')
+        with pytest.raises(django.db.IntegrityError):
+            cursor.execute("INSERT INTO item VALUES ('a')")
+        cursor.execute("SELECT name FROM item")
+        rows = cursor.fetchall()
+
+    assert rows == [("a",)]
+    assert proxied_target.is_usable() is True
+
+
+def test_statement_after_held_statements_reports_its_own_result(
+    proxied_alias: str, proxied_target: base.DatabaseWrapper
+) -> None:
+    with proxied_target.cursor() as cursor:
+        cursor.execute("CREATE TABLE item (pk INTEGER PRIMARY KEY, name TEXT)")
+
+    with (
+        transaction.atomic(using=proxied_alias),
+        transaction.atomic(using=proxied_alias),
+        proxied_target.cursor() as cursor,
+    ):
+        cursor.execute("INSERT INTO item (name) VALUES ('a')")
+        lastrowid = cursor.lastrowid
+        rowcount = cursor.rowcount
+    with transaction.atomic(using=proxied_alias), proxied_target.cursor() as cursor:
+        cursor.execute("SELECT pk, name FROM item")
+        description = [column[0] for column in cursor.description]
+        rows = cursor.fetchall()
+
+    assert lastrowid == 1
+    assert rowcount == 1
+    assert description == ["pk", "name"]
+    assert rows == [(1, "a")]
+
+
+def test_fatal_error_after_held_begin_loses_transaction(
+    httpserver: pytest_httpserver.HTTPServer, stub_target: base.DatabaseWrapper
+) -> None:
+    stub_target.ensure_connection()
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(
+        '{"baton": "baton", "base_url": null}\n'
+        '{"type": "step_begin", "step": 0, "cols": []}\n'
+        '{"type": "step_end", "affected_row_count": 0, "last_insert_rowid": null}\n'
+        '{"type": "error", "error": {"message": "cursor failed"}}\n'
+    )
+
+    with stub_target.cursor() as cursor:
+        cursor.execute("BEGIN")
+        with pytest.raises(django.db.OperationalError) as excinfo:
+            cursor.execute("SELECT 1")
+
+    assert str(excinfo.value) == (
+        "Lost the connection to the remote database inside a transaction: whether "
+        "it committed is unknown, and this connection cannot be used again."
+    )
+    assert stub_target.is_usable() is False
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        pytest.param(
+            "\n",
+            "cursor response body ended before the cursor response line",
+            id="empty",
+        ),
+        pytest.param(
+            "not json\n",
+            "invalid cursor response: Expecting value: line 1 column 1 (char 0)",
+            id="response",
+        ),
+        pytest.param(
+            '{"baton": null}\nnot json\n',
+            "invalid cursor entry: Expecting value: line 1 column 1 (char 0)",
+            id="entry",
+        ),
+        pytest.param(
+            '{"baton": null}\n{"type": "step_begin", "step": 0, "cols": []}\n'
+            '{"type": "step_end", "affected_row_count": 1, "last_insert_rowid": [1]}\n',
+            "invalid rowid in server response: int() argument must be a string, a "
+            "bytes-like object or a real number, not 'list'",
+            id="rowid",
+        ),
+        pytest.param(
+            '{"baton": null}\n{"type": "step_error", "step": 0, "error": {}}\n',
+            "unknown error",
+            id="error-without-message",
+        ),
+    ],
+)
+def test_malformed_cursor_response_raises_operational_error(
+    body: str,
+    httpserver: pytest_httpserver.HTTPServer,
+    message: str,
+    stub_target: base.DatabaseWrapper,
+) -> None:
+    stub_target.ensure_connection()
+    httpserver.expect_oneshot_request("/v3/cursor").respond_with_data(body)
+
+    with (
+        stub_target.cursor() as cursor,
+        pytest.raises(django.db.OperationalError) as excinfo,
+    ):
+        cursor.execute("INSERT INTO item VALUES (1)")
+
+    assert str(excinfo.value) == message
