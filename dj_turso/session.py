@@ -36,6 +36,14 @@ FOREIGN_KEYS_ASSIGNMENT_REGEX = re.compile(
 )
 
 
+# Transaction statements that return nothing: held, and sent as the first steps of
+# the next statement's request, to save their round trips.
+HELD_STATEMENT_REGEX = re.compile(
+    r"\s*(?:BEGIN(?:\s+(?:DEFERRED|IMMEDIATE|EXCLUSIVE))?(?:\s+TRANSACTION)?"
+    r"|SAVEPOINT\s+\S+|RELEASE(?:\s+SAVEPOINT)?\s+\S+)\s*;?\s*",
+    re.IGNORECASE,
+)
+
 # Turso Cloud's answer to a statement on a transaction it rolled back for idling.
 IDLE_ROLLBACK_MESSAGE = (
     "interactive transaction was rolled back because the stream was idle for too long"
@@ -73,6 +81,13 @@ class KeepAliveSession(serverless_session.Session):
         self.starting_stream = False
         self.stream_was_reset = False
         self.last_response_time = time.monotonic()
+        self.held_statements: list[str] = []
+
+    # The driver reads a transaction as open from this, and skips COMMIT and
+    # ROLLBACK otherwise.
+    @property
+    def autocommit(self) -> bool:
+        return self._autocommit and not self.held_statements
 
     # A failed statement that leaves no transaction behind the one it ran in lost
     # it, however the stream ended; so did one that succeeded on a stream that ended.
@@ -90,10 +105,15 @@ class KeepAliveSession(serverless_session.Session):
             protocol.build_batch_step(sql, args, named_args)
         except (TypeError, ValueError) as exc:
             raise turso_serverless.ProgrammingError(str(exc)) from exc
+        if args is None and named_args is None and HELD_STATEMENT_REGEX.fullmatch(sql):
+            self.held_statements.append(sql)
+            return serverless_session.StmtResult(
+                columns=[], rows=[], affected_rows=0, last_insert_rowid=None
+            )
         in_transaction = not self._autocommit
         self.stream_was_reset = False
         try:
-            result = super().execute_stmt(sql, args, named_args, want_rows)
+            result = self.execute_batch(sql, args, named_args, want_rows)
         except RuntimeError as exc:
             if in_transaction and self._autocommit:
                 self.transaction_lost = True
@@ -115,6 +135,58 @@ class KeepAliveSession(serverless_session.Session):
             enabled = self.execute_stmt("PRAGMA foreign_keys").rows[0][0]
             self.foreign_keys_statement = f"PRAGMA foreign_keys = {enabled}"
         return result
+
+    # Upstream's execute_stmt, with the held statements as the batch's first steps,
+    # each step run only if the one before it succeeded.
+    def execute_batch(
+        self,
+        sql: str,
+        args: list[t.Any] | None,
+        named_args: list[tuple[str, t.Any]] | None,
+        want_rows: bool,
+    ) -> serverless_session.StmtResult:
+        held_statements, self.held_statements = self.held_statements, []
+        steps = [
+            protocol.build_batch_step(held_sql, want_rows=False)
+            for held_sql in held_statements
+        ]
+        steps.append(
+            protocol.build_batch_step(
+                sql, args=args, named_args=named_args, want_rows=want_rows
+            )
+        )
+        for index, step in enumerate(steps[1:], start=1):
+            step["condition"] = {"type": "ok", "step": index - 1}
+        steps.append(self._autocommit_probe_step())
+        raw = self._post(
+            "/v3/cursor", {"baton": self._baton, "batch": {"steps": steps}}
+        )
+        decoder = CursorDecoder(statement_step=len(steps) - 2)
+        try:
+            cursor_response, *entries = [
+                json.loads(line) for line in raw.decode().splitlines() if line.strip()
+            ]
+            self._update_stream(
+                cursor_response.get("baton"), cursor_response.get("base_url")
+            )
+            for entry in entries:
+                decoder.feed(entry)
+                if decoder.fatal is not None:
+                    break
+        except (protocol.ProtocolError, ValueError) as exc:
+            self._reset_stream()
+            message = f"invalid cursor response: {exc}"
+            raise protocol.ProtocolError(message) from exc
+        if decoder.fatal is not None:
+            self._refresh_autocommit()
+            raise decoder.step_error or decoder.fatal
+        if decoder.probe_unreliable:
+            self._refresh_autocommit()
+        else:
+            self._autocommit = decoder.probe_executed
+        if decoder.step_error is not None:
+            raise decoder.step_error
+        return decoder.result
 
     def _reset_stream(self) -> None:
         super()._reset_stream()
@@ -155,12 +227,7 @@ class KeepAliveSession(serverless_session.Session):
             )
             for result in results:
                 if result["type"] == "error":
-                    error = result["error"]
-                    raise protocol.ServerError(
-                        error["message"],
-                        code=error.get("code"),
-                        extended_code=error.get("extended_code"),
-                    )
+                    raise get_server_error(result["error"])
         except RuntimeError:
             self.close_stream()
             raise
@@ -169,6 +236,7 @@ class KeepAliveSession(serverless_session.Session):
         self.last_response_time = time.monotonic()
 
     def close(self) -> None:
+        self.held_statements = []
         try:
             self.close_stream()
         finally:
@@ -260,6 +328,49 @@ class KeepAliveSession(serverless_session.Session):
             self.forward_proxy_headers = None
 
 
+# Upstream's cursor decoder, for a batch of any length: the statement's result, the
+# failed step's error, and whether the trailing autocommit probe ran.
+class CursorDecoder:
+    def __init__(self, statement_step: int) -> None:
+        self.statement_step = statement_step
+        self.probe_step = statement_step + 1
+        self.current_step: int | None = None
+        self.result = serverless_session.StmtResult(
+            columns=[], rows=[], affected_rows=0, last_insert_rowid=None
+        )
+        self.step_error: protocol.ServerError | None = None
+        self.fatal: protocol.ServerError | None = None
+        self.probe_executed = False
+        self.probe_unreliable = False
+
+    def feed(self, entry: dict[str, t.Any]) -> None:
+        match entry.get("type"):
+            case "step_begin":
+                self.current_step = entry.get("step")
+                if self.current_step == self.probe_step:
+                    self.probe_executed = True
+                elif self.current_step == self.statement_step:
+                    self.result.columns = [
+                        column.get("name") or "" for column in entry.get("cols") or []
+                    ]
+            case "row" if self.current_step == self.statement_step:
+                self.result.rows.append(
+                    tuple(protocol.decode_value(value) for value in entry["row"])
+                )
+            case "step_end" if self.current_step == self.statement_step:
+                self.result.affected_rows = entry.get("affected_row_count") or 0
+                rowid = entry.get("last_insert_rowid")
+                self.result.last_insert_rowid = None if rowid is None else int(rowid)
+            case "step_error":
+                if entry.get("step") == self.probe_step:
+                    self.probe_unreliable = True
+                else:
+                    self.step_error = get_server_error(entry["error"])
+                self.current_step = None
+            case "error":
+                self.fatal = get_server_error(entry["error"])
+
+
 class KeepAliveConnection(turso_serverless.Connection):
     def __init__(self, session: KeepAliveSession, isolation_level: str | None) -> None:
         super().__init__(session, isolation_level=isolation_level)
@@ -320,6 +431,14 @@ def get_proxy(scheme: str, netloc: str) -> tuple[str, dict[str, str]] | None:
             f"Basic {base64.b64encode(credentials.encode()).decode('ascii')}"
         )
     return urllib.parse.unquote(parts.netloc.rpartition("@")[2]), headers
+
+
+def get_server_error(error: dict[str, t.Any]) -> protocol.ServerError:
+    return protocol.ServerError(
+        error["message"],
+        code=error.get("code"),
+        extended_code=error.get("extended_code"),
+    )
 
 
 def connect_with_untimed_reads(connection: http.client.HTTPConnection) -> None:
