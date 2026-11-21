@@ -1,7 +1,6 @@
 """Native SQL for functions Django's sqlite3 backend runs in Python."""
 
 import collections.abc
-import functools
 import typing as t
 
 import django.core.exceptions
@@ -106,8 +105,10 @@ class SQLAggregateCompiler(SQLCompiler, compiler.SQLAggregateCompiler):
 # A pattern known only once the query runs, such as a column's, goes unchecked.
 def check_regex(connection: base.DatabaseWrapper, node: lookups.Regex) -> None:
     pattern = get_literal_pattern(node)
+    # Every regex lookup names itself: regex or iregex.
+    lookup_name = t.cast("str", node.lookup_name)
     if pattern is not None and not is_regex_compilable(
-        connection, node.lookup_name, pattern
+        connection, lookup_name, pattern
     ):
         raise exceptions.RegexNotSupportedError(pattern)
 
@@ -122,14 +123,16 @@ def get_literal_pattern(node: lookups.Regex) -> t.Any:
 
 # Turso's regexp() is NULL for a pattern its Rust regex crate cannot compile, which
 # would silently match nothing. The probe sends the pattern as the lookup's operator.
-@functools.lru_cache
 def is_regex_compilable(
     connection: base.DatabaseWrapper, lookup_name: str, pattern: t.Any
 ) -> bool:
-    operand = connection.operators[lookup_name].removeprefix("REGEXP ")
-    with connection.cursor() as cursor:
-        cursor.execute(f"SELECT regexp({operand}, '')", [pattern])
-        return cursor.fetchone()[0] is not None
+    key = (lookup_name, pattern)
+    if key not in connection.compilable_regexes:
+        operand = connection.operators[lookup_name].removeprefix("REGEXP ")
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT regexp({operand}, '')", [pattern])
+            connection.compilable_regexes[key] = cursor.fetchone()[0] is not None
+    return connection.compilable_regexes[key]
 
 
 # A precision known only once the query runs, such as a column's, may be negative.

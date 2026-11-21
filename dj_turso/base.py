@@ -46,6 +46,8 @@ class DatabaseWrapper(sqlite_base.DatabaseWrapper):
         self.configured_name_is_remote = drivers.is_remote_name(
             str(settings_dict["NAME"])
         )
+        # Whether Turso compiles each regex lookup's pattern, by lookup and pattern.
+        self.compilable_regexes: dict[tuple[str, t.Any], bool] = {}
 
     def get_connection_params(self) -> dict[str, t.Any]:
         kwargs = super().get_connection_params()
