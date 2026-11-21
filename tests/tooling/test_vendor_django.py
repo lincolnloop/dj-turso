@@ -6,6 +6,7 @@ import sys
 def test_vendor_script_copies_listed_entries_and_removes_stale(
     tmp_path: pathlib.Path,
 ) -> None:
+    (tmp_path / "LICENSE").write_text("Copyright (c) Django Software Foundation\n")
     source = tmp_path / "source"
     (source / "lookup" / "__pycache__").mkdir(parents=True)
     (source / "lookup" / "__pycache__" / "tests.cpython-315.pyc").write_bytes(b"")
@@ -36,7 +37,10 @@ def test_vendor_script_copies_listed_entries_and_removes_stale(
     assert completed.stdout == "vendored 1 apps, 1 support entries\n"
     assert sorted(
         path.relative_to(destination).as_posix() for path in destination.rglob("*")
-    ) == ["lookup", "lookup/tests.py", "urls.py"]
+    ) == ["LICENSE", "lookup", "lookup/tests.py", "urls.py"]
+    assert (destination / "LICENSE").read_text() == (
+        "Copyright (c) Django Software Foundation\n"
+    )
     assert (destination / "lookup" / "tests.py").read_text() == "LOOKUP = 1\n"
     assert (destination / "urls.py").read_text() == "urlpatterns = []\n"
 
@@ -68,7 +72,7 @@ def test_vendor_script_rejects_missing_entry_before_touching_destination(
     )
 
     assert completed.returncode == 1
-    assert completed.stderr == "missing in source: nope, missing.py\n"
+    assert completed.stderr == "missing in source: nope, missing.py, ../LICENSE\n"
     assert completed.stdout == ""
     assert sorted(
         path.relative_to(destination).as_posix() for path in destination.rglob("*")
@@ -76,6 +80,7 @@ def test_vendor_script_rejects_missing_entry_before_touching_destination(
 
 
 def test_vendor_script_creates_absent_destination(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "LICENSE").write_text("Copyright (c) Django Software Foundation\n")
     source = tmp_path / "source"
     source.mkdir()
     (source / "urls.py").write_text("urlpatterns = []\n")
@@ -102,4 +107,4 @@ def test_vendor_script_creates_absent_destination(tmp_path: pathlib.Path) -> Non
     assert completed.stdout == "vendored 0 apps, 1 support entries\n"
     assert sorted(
         path.relative_to(destination).as_posix() for path in destination.rglob("*")
-    ) == ["urls.py"]
+    ) == ["LICENSE", "urls.py"]

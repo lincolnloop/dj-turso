@@ -1,7 +1,12 @@
+import gc
+import pathlib
 import uuid
+import weakref
 
 import django.db
+import django.db.utils
 import pytest
+import pytest_django
 from django.db.models import expressions
 from django.test import utils as test_utils
 
@@ -174,3 +179,21 @@ def test_regex_unique_constraint_condition_rejects_matching_duplicate() -> None:
         models.Slug.objects.create(name="draft-a")
 
     assert str(excinfo.value) == "UNIQUE constraint failed: core_slug.name"
+
+
+def test_regex_check_keeps_no_connection_alive(
+    django_db_blocker: pytest_django.DjangoDbBlocker, tmp_path: pathlib.Path
+) -> None:
+    handler = django.db.utils.ConnectionHandler(
+        {"default": {"ENGINE": "dj_turso", "NAME": str(tmp_path / "default.db")}}
+    )
+    connection = handler["default"]
+    queryset = models.Tag.objects.filter(name__regex="^b")
+    with django_db_blocker.unblock():
+        queryset.query.get_compiler(connection=connection).as_sql()
+        connection.close()
+    reference = weakref.ref(connection)
+    del handler, connection
+    gc.collect()
+
+    assert reference() is None

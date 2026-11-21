@@ -5,6 +5,9 @@ import pathlib
 import shutil
 import sys
 
+# Django's BSD license, beside its tests directory, travels with the vendored copy.
+LICENSE_ENTRY = "../LICENSE"
+
 
 class MissingSourceEntriesError(Exception):
     def __init__(self, names: list[str]) -> None:
@@ -53,7 +56,7 @@ def read_app_list(path: pathlib.Path) -> dict[str, list[str]]:
 def vendor_entries(
     source: pathlib.Path, destination: pathlib.Path, names: list[str]
 ) -> None:
-    missing = [name for name in names if not (source / name).exists()]
+    missing = [name for name in [*names, LICENSE_ENTRY] if not (source / name).exists()]
     if missing:
         raise MissingSourceEntriesError(missing)
     if destination.exists():
@@ -68,6 +71,7 @@ def vendor_entries(
             )
         else:
             shutil.copy2(source / name, destination / name)
+    shutil.copy2(source / LICENSE_ENTRY, destination / "LICENSE")
 
 
 if __name__ == "__main__":

@@ -169,23 +169,15 @@ serverless = [
 requires-dist = [
     { name = "django", specifier = ">=6.1,<6.2" },
     { name = "pyturso", specifier = ">=0.8.3,<0.9" },
-    { name = "turso-serverless", marker = "extra == 'serverless'", specifier = ">=0.1.0,<0.2" },
+    { name = "turso-serverless", marker = "extra == 'serverless'", specifier = ">=0.1.0,<0.1.1" },
 ]
 provides-extras = ["serverless"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "argon2-cffi", specifier = "==25.1.0" },
-    { name = "bcrypt", specifier = "==5.0.0" },
-    { name = "build", specifier = "==1.6.1" },
     { name = "defusedxml", specifier = "==0.7.1" },
     { name = "django-stubs", specifier = "==6.1.2" },
-    { name = "docutils", specifier = "==0.23" },
-    { name = "hatch-vcs", specifier = "==0.5.0" },
-    { name = "hatchling", specifier = "==1.33.0" },
-    { name = "jinja2", specifier = "==3.1.6" },
     { name = "mypy", specifier = "==2.4.1" },
-    { name = "numpy", specifier = "==2.5.4" },
     { name = "pillow", specifier = "==13.0.0" },
     { name = "pre-commit", specifier = "==4.7.0" },
     { name = "pytest", specifier = "==9.2.0" },
@@ -200,7 +192,6 @@ dev = [
     { name = "sqlparse", specifier = "==0.6.1" },
     { name = "turso-serverless", specifier = "==0.1.0" },
     { name = "types-defusedxml", specifier = "==0.7.0.20260504" },
-    { name = "tzdata", specifier = "==2026.6" },
 ]
 
 [[package]]
