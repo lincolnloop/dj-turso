@@ -14,11 +14,11 @@ http://localhost:8000/polls/ to vote.
 
 ## Turso Cloud
 
-Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, here from the repository's `.env`, and
-run the same commands:
+Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, then run the same commands:
 
 ```shell
-set -a; . ../../.env; set +a
+export TURSO_DATABASE_URL=turso://my-database.turso.io
+export TURSO_AUTH_TOKEN=...
 uv run python manage.py migrate
 ```
 
@@ -32,12 +32,13 @@ as gunicorn, needs Turso Cloud.
 
 ## Settings
 
-| Variable             | Default                               |
-| -------------------- | ------------------------------------- |
-| `TURSO_DATABASE_URL` | unset: the local file `default.db`    |
-| `TURSO_AUTH_TOKEN`   | unset: no token                       |
-| `DJANGO_SECRET_KEY`  | an insecure key for local development |
-| `DJANGO_DEBUG`       | `True`; any other value turns it off  |
+| Variable               | Default                                        |
+| ---------------------- | ---------------------------------------------- |
+| `TURSO_DATABASE_URL`   | unset: the local file `default.db`             |
+| `TURSO_AUTH_TOKEN`     | unset: no token                                |
+| `DJANGO_SECRET_KEY`    | an insecure key for local development          |
+| `DJANGO_DEBUG`         | `True`; any other value turns it off           |
+| `ENABLE_DEBUG_TOOLBAR` | `1`: Django Debug Toolbar on; `0` turns it off |
 
 ## Tests
 
