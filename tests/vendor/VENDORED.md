@@ -4,6 +4,7 @@
 record gaps in the index instead.
 
 - Upstream: <https://github.com/django/django>
+- License: BSD 3-Clause, kept beside the copy in [`django/LICENSE`](django/LICENSE)
 - Tag: `6.1.3`
 - Commit: `f16e25dcb9fe55734ba4ea2b00ac34405b7df74a`
 
