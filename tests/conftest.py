@@ -11,11 +11,6 @@ import pytest
 
 from tests import gap_index
 
-MARKER_KINDS = {
-    f"turso_{kind.removeprefix('turso-').replace('-', '_')}": kind
-    for kind in gap_index.KINDS
-}
-
 causes_key = pytest.StashKey[list[gap_index.Cause]]()
 
 running_call_key = pytest.StashKey[bool]()
@@ -29,13 +24,6 @@ class WorkerController(t.Protocol):
 
 # Loaded here so a bad index stops an xdist run before any worker starts.
 def pytest_configure(config: pytest.Config) -> None:
-    for marker_name, kind in MARKER_KINDS.items():
-        config.addinivalue_line(
-            "markers",
-            f"{marker_name}(name, reason='', issue='', raises='', match=''): "
-            f"known {kind} gap, "
-            "marked as the gap index marks it",
-        )
     with raise_usage_error():
         config.stash[causes_key] = gap_index.load_index(
             pathlib.Path(
@@ -59,16 +47,6 @@ def pytest_collection_modifyitems(
         causes = []
     causes_by_entry = {entry: cause for cause in causes for entry in cause.tests}
     for item in items:
-        for marker in list(item.iter_markers()):
-            if marker.name in MARKER_KINDS:
-                with raise_usage_error():
-                    cause = gap_index.Cause(
-                        marker.args[0],
-                        MARKER_KINDS[marker.name],
-                        (),
-                        **marker.kwargs,
-                    )
-                item.add_marker(get_mark(cause))
         for prefix in gap_index.get_node_id_prefixes(item.nodeid):
             if prefix in causes_by_entry:
                 item.add_marker(get_mark(causes_by_entry[prefix]))
