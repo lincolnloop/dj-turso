@@ -53,7 +53,7 @@ def check_default_alias(
         connection.close()
 
 
-@pytest.fixture(params=[pytest.param("pyturso", id="pyturso")])
+@pytest.fixture
 def target(
     django_db_blocker: pytest_django.DjangoDbBlocker, tmp_path: pathlib.Path
 ) -> collections.abc.Iterator[base.DatabaseWrapper]:
