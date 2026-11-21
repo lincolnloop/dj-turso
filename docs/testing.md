@@ -1,33 +1,19 @@
 # Testing your project
 
-Run your tests in parallel with Django's runner or with
-[pytest-django](https://pytest-django.readthedocs.io) and
-[pytest-xdist](https://pytest-xdist.readthedocs.io). Each worker gets its own test
-database:
+Run your tests as usual, with Django's runner or with
+[pytest-django](https://pytest-django.readthedocs.io). No test settings are needed:
 
 ```shell
-python manage.py test --parallel
+python manage.py test
 ```
 
-```shell
-pip install pytest-django pytest-xdist
-pytest -n auto
-```
+The test database is a temporary file that never outlives the run, as with Django's
+sqlite3 in-memory default. `--keepdb`, and pytest-django's `--reuse-db`, keep only a
+test database named in `TEST["NAME"]`.
 
-Without `TEST["NAME"]`, the test database is a temporary file that all threads share,
-and Django's runner gives each worker a copy. pytest-xdist workers each get a file
-instead: pytest-django names it `TEST["NAME"]`, or `test_` and `NAME`, with the worker
-appended, such as `test_default.db_gw0`.
+## Turso Cloud
 
-As with Django's sqlite3 in-memory default, the temporary file never outlives the run:
-`--keepdb`, and pytest-django's `--reuse-db`, keep only a test database named in
-`TEST["NAME"]`.
-
-With pytest-xdist, set `TEST["NAME"]` whenever `NAME` is an absolute path or a URL:
-pytest-django builds the worker's name from it, and `test_/srv/app/default.db_gw0` is no
-file. Without `-n`, no `TEST` setting is needed.
-
-So with a URL `NAME`, as for Turso Cloud, point the test database at a file:
+With a URL `NAME`, point the test database at a local file:
 
 ```python
 DATABASES = {
@@ -47,5 +33,20 @@ destroys it:
 "TEST": {"NAME": "turso://my-test-database.turso.io"},
 ```
 
-Run tests against a remote test database without `-n` or `--parallel`: each worker needs
-its own test database, and a remote one can't be renamed or cloned.
+## Parallel runs
+
+Parallel runs are supported, with Django's `--parallel` and with
+[pytest-xdist](https://pytest-xdist.readthedocs.io). Each worker gets its own test
+database:
+
+```shell
+python manage.py test --parallel
+pytest -n auto
+```
+
+- Django's runner gives each worker a copy of the temporary file.
+- pytest-xdist workers each get a file named after `TEST["NAME"]`, or `test_` and
+  `NAME`, with the worker appended, such as `test_default.db_gw0`. So set `TEST["NAME"]`
+  when `NAME` is an absolute path or a URL: `test_/srv/app/default.db_gw0` is no file.
+- A remote test database runs without `-n` or `--parallel`: it can't be renamed or
+  cloned per worker.
