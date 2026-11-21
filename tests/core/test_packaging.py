@@ -10,9 +10,10 @@ def test_distribution_metadata_declares_name_and_serverless_extra() -> None:
     assert metadata.get_all("Requires-Dist") == [
         "django<6.2,>=6.1",
         "pyturso<0.9,>=0.8.3",
-        "turso-serverless<0.2,>=0.1.0; extra == 'serverless'",
+        "turso-serverless<0.1.1,>=0.1.0; extra == 'serverless'",
     ]
     assert metadata.get_all("Project-URL") == [
+        "Changelog, https://github.com/lincolnloop/dj-turso/releases",
         "Homepage, https://github.com/lincolnloop/dj-turso",
         "Issues, https://github.com/lincolnloop/dj-turso/issues",
         "Repository, https://github.com/lincolnloop/dj-turso",
