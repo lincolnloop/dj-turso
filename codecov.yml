@@ -1,4 +1,11 @@
 ---
+# Six coverage uploads per commit: five tox environments and the polls example. Status
+# and comment wait for all of them, so a partial upload never reads as a drop.
+codecov:
+  notify:
+    after_n_builds: 6
+comment:
+  after_n_builds: 6
 coverage:
   status:
     project:
