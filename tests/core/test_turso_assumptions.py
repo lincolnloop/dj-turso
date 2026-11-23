@@ -127,3 +127,58 @@ def test_turso_vacuum_into_refuses_parameter(tmp_path: pathlib.Path) -> None:
     assert (
         str(excinfo.value) == "Parse error: VACUUM INTO requires a string literal path"
     )
+
+
+def test_turso_foreign_key_check_reports_no_rows() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE p (id INTEGER PRIMARY KEY)")
+    connection.execute(
+        "CREATE TABLE ch (id INTEGER PRIMARY KEY, p_id INTEGER REFERENCES p(id))"
+    )
+    connection.execute("INSERT INTO ch VALUES (1, 99)")
+
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_turso_keeps_autoincrement_counter_in_own_table() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE ai (id INTEGER PRIMARY KEY AUTOINCREMENT)")
+
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+    ).fetchall()
+
+    assert rows == [
+        ("__turso_internal_seq___turso_internal_autoincrement_ai",),
+        ("ai",),
+        ("sqlite_sequence",),
+    ]
+
+
+def test_turso_table_xinfo_drops_type_arguments() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE v (n varchar(30))")
+
+    assert connection.execute("PRAGMA table_xinfo(v)").fetchall() == [
+        (0, "n", "varchar", 0, None, 0, 0)
+    ]
+
+
+def test_turso_lowercases_index_names() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE v (n TEXT)")
+    connection.execute('CREATE INDEX "MyIdx" ON v (n)')
+
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index'"
+    ).fetchall()
+
+    assert rows == [("myidx",)]
+
+
+def test_turso_memory_database_is_per_connection() -> None:
+    first = turso.connect(":memory:", isolation_level=None)
+    first.execute("CREATE TABLE z (a)")
+    second = turso.connect(":memory:", isolation_level=None)
+
+    assert second.execute("SELECT name FROM sqlite_master").fetchall() == []
