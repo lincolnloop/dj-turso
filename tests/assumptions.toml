@@ -1,0 +1,300 @@
+# Upstream facts dj-turso relies on or works around. One [[assumption]] per fact:
+# name, where (the dj_turso files that rely on it), evidence (an upstream doc or
+# source URL), and either test (the node id that fails once the fact stops holding)
+# or manual (what to re-check by hand) with verified (date and version last
+# confirmed). Tests fail both ways: a fact lost breaks dj-turso, a fact gained means
+# its workaround can go.
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso date functions know no time zone names"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[date-functions-know-no-time-zones]"
+where = ["dj_turso/operations.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso ignores a negative ROUND precision"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[negative-round-precision-ignored]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://docs.rs/regex/latest/regex/#syntax"
+name = "Turso REGEXP is NULL for a pattern its regex crate cannot compile"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[regexp-backreference-is-null]"
+where = ["dj_turso/compiler.py", "dj_turso/features.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso STDDEV is the sample deviation"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[stddev-is-sample]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso UUID functions return a blob"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[uuid-functions-return-blob]"
+where = ["dj_turso/compiler.py", "dj_turso/features.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no BIT_AND aggregate"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-bit-and-aggregate]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no BIT_OR aggregate"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-bit-or-aggregate]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no BIT_XOR aggregate"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-bit-xor-aggregate]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso generated columns need an experimental flag"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[generated-columns-need-experimental-flag]"
+where = ["dj_turso/features.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+manual = "COMPAT.md still lists STORED generated columns as unsupported; the experimental flag hides it from a test"
+name = "Turso has no STORED generated columns"
+verified = "2026-11-23 pyturso 0.8.4"
+where = ["dj_turso/features.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no MD5 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-md5-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no SHA1 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-sha1-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no SHA224 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-sha224-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no SHA256 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-sha256-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no SHA384 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-sha384-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no SHA512 function"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-sha512-function]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no XOR operator"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-xor-operator]"
+where = ["dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso VACUUM INTO takes only a string literal path"
+test = "tests/core/test_turso_assumptions.py::test_turso_vacuum_into_refuses_parameter"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso PRAGMA foreign_key_check reports no rows"
+test = "tests/core/test_turso_assumptions.py::test_turso_foreign_key_check_reports_no_rows"
+where = ["dj_turso/base.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso keeps each AUTOINCREMENT counter in a table of its own"
+test = "tests/core/test_turso_assumptions.py::test_turso_keeps_autoincrement_counter_in_own_table"
+where = ["dj_turso/introspection.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso PRAGMA table_xinfo drops a declared type's arguments"
+test = "tests/core/test_turso_assumptions.py::test_turso_table_xinfo_drops_type_arguments"
+where = ["dj_turso/introspection.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso lowercases index names"
+test = "tests/core/test_turso_assumptions.py::test_turso_lowercases_index_names"
+where = ["dj_turso/introspection.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso gives each :memory: connection a database of its own"
+test = "tests/core/test_turso_assumptions.py::test_turso_memory_database_is_per_connection"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "turso_version() exists on the Turso engine"
+test = "tests/core/test_connection.py::test_turso_engine_passes_database_check[pyturso]"
+where = ["dj_turso/base.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso paramstyle is qmark"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_paramstyle_is_qmark"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso has no Binary"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_lacks_stdlib_api[no-binary]"
+where = ["dj_turso/drivers.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connections have no backup()"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_lacks_stdlib_api[no-backup]"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connections have no create_function()"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_lacks_stdlib_api[no-create-function]"
+where = ["dj_turso/operations.py", "dj_turso/compiler.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connect() takes no timeout"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_timeout"
+where = ["dj_turso/drivers.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso executemany() with no parameters reports rowcount -1"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_executemany_without_parameters_reports_minus_one"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso binds an integer past 64 bits as a float"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_binds_integer_past_64_bits_as_float"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso binds only None, numbers, strings and bytes"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_refuses_unbindable_parameter"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso runs a RETURNING write only as its rows are fetched"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_returning_write_raises_constraint_error_on_fetch"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso raises engine errors as bare DatabaseError with the engine's error as context"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_raises_engine_error_as_bare_database_error"
+where = ["dj_turso/drivers.py"]
+
+[[assumption]]
+evidence = "https://docs.turso.tech/sql-reference/multiprocess-access"
+name = "pyturso opens a database file in one process at a time"
+test = "tests/core/test_errors.py::test_second_process_on_open_database_raises_operational_error"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/django/django/blob/6.1.3/django/db/backends/sqlite3/creation.py"
+name = "Django's sqlite3 DatabaseCreation._create_test_db"
+test = "tests/core/test_creation.py::test_url_test_name_is_left_in_place"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/django/django/blob/6.1.3/django/db/backends/sqlite3/creation.py"
+name = "Django's sqlite3 DatabaseCreation._get_test_db_name"
+test = "tests/core/test_creation.py::test_in_memory_test_name_tests_in_memory"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/django/django/blob/6.1.3/django/db/backends/sqlite3/creation.py"
+name = "Django's sqlite3 DatabaseCreation._clone_test_db"
+test = "tests/core/test_creation.py::test_parallel_setup_replaces_existing_clone"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/django/django/blob/6.1.3/django/db/backends/sqlite3/creation.py"
+name = "Django's sqlite3 DatabaseCreation._destroy_test_db"
+test = "tests/core/test_creation.py::test_url_name_tests_on_local_test_name"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/typeddjango/django-stubs"
+manual = "Check whether django-stubs now declares both methods; if so, delete the TYPE_CHECKING stand-in class"
+name = "django-stubs leaves out DatabaseCreation._create_test_db and _get_database_display_str"
+verified = "2026-11-23 django-stubs 6.1.2"
+where = ["dj_turso/creation.py"]
+
+[[assumption]]
+evidence = "https://github.com/django/django/blob/6.1.3/django/db/backends/sqlite3/operations.py"
+name = "Django's DatabaseOperations._quote_params_for_last_executed_query"
+test = "tests/core/test_features.py::test_captured_query_shows_quoted_parameters"
+where = ["dj_turso/operations.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+name = "turso_serverless Session._reset_stream"
+test = "tests/core/test_session.py::test_stream_ended_after_successful_statement_loses_transaction"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+name = "turso_serverless Session._post, _base_url and _baton"
+test = "tests/core/test_session.py::test_queries_reuse_one_tcp_connection"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+manual = "Session still keeps its autocommit state in _autocommit; dj-turso writes it too, so a rename upstream would not fail a test"
+name = "turso_serverless Session._autocommit"
+verified = "2026-11-23 turso-serverless 0.1.0"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://docs.turso.tech/sdk/http/reference"
+manual = "The HTTP reference still says connections close after 10 seconds of idle time; STREAM_IDLE_TIMEOUT matches"
+name = "Turso Cloud closes a stream after 10 seconds idle"
+verified = "2026-11-23 docs.turso.tech"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://docs.turso.tech/api-reference/databases/create"
+name = "Platform API creates a Turso-engine database for use_tursodb"
+test = "tests/core/test_connection.py::test_turso_engine_passes_database_check[cloud]"
+where = ["tests/utils.py"]
+
+[[assumption]]
+evidence = "https://docs.turso.tech/api-reference/databases/create"
+manual = "Check whether the create-database reference now documents use_tursodb, or the turso CLI's --tursodb sends something else"
+name = "Platform API use_tursodb field is undocumented"
+verified = "2026-11-23 docs.turso.tech"
+where = ["tests/utils.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+manual = "Turso Cloud runs a newer engine than the locked pyturso; its drift shows in the target-parametrized tests, not here"
+name = "Raw-engine tests run on local pyturso only"
+verified = "2026-11-23 pyturso 0.8.4"
+where = ["tests/core/test_turso_assumptions.py"]
