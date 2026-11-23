@@ -10,6 +10,7 @@ import typing as t
 
 import pytest
 import turso
+from turso import _turso
 
 
 @pytest.mark.parametrize(
@@ -182,3 +183,100 @@ def test_turso_memory_database_is_per_connection() -> None:
     second = turso.connect(":memory:", isolation_level=None)
 
     assert second.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
+def test_pyturso_paramstyle_is_qmark() -> None:
+    assert turso.paramstyle == "qmark"
+
+
+@pytest.mark.parametrize(
+    ("message", "name", "owner"),
+    [
+        pytest.param(
+            "module 'turso' has no attribute 'Binary'",
+            "Binary",
+            turso,
+            id="no-binary",
+        ),
+        pytest.param(
+            "'Connection' object has no attribute 'backup'",
+            "backup",
+            turso.connect(":memory:"),
+            id="no-backup",
+        ),
+        pytest.param(
+            "'Connection' object has no attribute 'create_function'",
+            "create_function",
+            turso.connect(":memory:"),
+            id="no-create-function",
+        ),
+    ],
+)
+def test_pyturso_lacks_stdlib_api(message: str, name: str, owner: object) -> None:
+    with pytest.raises(AttributeError) as excinfo:
+        getattr(owner, name)
+
+    assert str(excinfo.value) == message
+
+
+def test_pyturso_connect_refuses_timeout() -> None:
+    options: dict[str, t.Any] = {"timeout": 1}
+
+    with pytest.raises(TypeError) as excinfo:
+        turso.connect(":memory:", **options)
+
+    assert (
+        str(excinfo.value) == "connect() got an unexpected keyword argument 'timeout'"
+    )
+
+
+def test_pyturso_executemany_without_parameters_reports_minus_one() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE p (id INTEGER PRIMARY KEY)")
+
+    cursor = connection.executemany("INSERT INTO p VALUES (?)", [])
+
+    assert cursor.rowcount == -1
+
+
+def test_pyturso_binds_integer_past_64_bits_as_float() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+
+    rows = connection.execute("SELECT ?", (2**70 + 1,)).fetchall()
+
+    assert rows == [(1.1805916207174113e21,)]
+
+
+def test_pyturso_refuses_unbindable_parameter() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+
+    with pytest.raises(turso.DatabaseError) as excinfo:
+        connection.execute("SELECT ?", (object(),))
+
+    assert str(excinfo.value) == (
+        "unexpected parameter value, "
+        "only None, numbers, strings and bytes are supported"
+    )
+
+
+def test_pyturso_returning_write_raises_constraint_error_on_fetch() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE u (a INT UNIQUE)")
+    connection.execute("INSERT INTO u VALUES (1)")
+    cursor = connection.cursor()
+    cursor.execute("INSERT INTO u VALUES (1) RETURNING a")
+
+    with pytest.raises(turso.IntegrityError) as excinfo:
+        cursor.fetchall()
+
+    assert str(excinfo.value) == "UNIQUE constraint failed: u.a"
+
+
+def test_pyturso_raises_engine_error_as_bare_database_error() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+
+    with pytest.raises(turso.DatabaseError) as excinfo:
+        connection.execute("SELECT * FROM missing")
+
+    assert type(excinfo.value) is turso.DatabaseError
+    assert type(excinfo.value.__context__) is _turso.Error
