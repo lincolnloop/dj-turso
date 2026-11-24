@@ -39,3 +39,25 @@ def test_assumption_register_tests_are_collected() -> None:
         sorted(line for line in completed.stdout.splitlines() if "::" in line)
         == node_ids
     )
+
+
+def test_assumption_register_entries_are_tested_or_checked_by_hand() -> None:
+    register = tomllib.loads((REPO_ROOT / "tests" / "assumptions.toml").read_text())
+
+    shapes = {tuple(sorted(assumption)) for assumption in register["assumption"]}
+
+    assert shapes == {
+        ("evidence", "manual", "name", "verified", "where"),
+        ("evidence", "name", "test", "where"),
+    }
+
+
+def test_assumption_register_where_paths_exist() -> None:
+    register = tomllib.loads((REPO_ROOT / "tests" / "assumptions.toml").read_text())
+    paths = sorted(
+        {path for assumption in register["assumption"] for path in assumption["where"]}
+    )
+
+    assert {path: (REPO_ROOT / path).is_file() for path in paths} == dict.fromkeys(
+        paths, True
+    )

@@ -152,8 +152,20 @@ where = ["dj_turso/base.py"]
 
 [[assumption]]
 evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
-name = "pyturso paramstyle is qmark"
-test = "tests/core/test_turso_assumptions.py::test_pyturso_paramstyle_is_qmark"
+name = "pyturso binds qmark placeholders"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_binds_placeholders[qmark]"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso binds named placeholders"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_binds_placeholders[named]"
+where = ["dj_turso/cursor.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso reads no format placeholders"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-format-placeholders]"
 where = ["dj_turso/cursor.py"]
 
 [[assumption]]
@@ -177,8 +189,26 @@ where = ["dj_turso/operations.py", "dj_turso/compiler.py"]
 [[assumption]]
 evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
 name = "pyturso connect() takes no timeout"
-test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_timeout"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_stdlib_option[timeout]"
 where = ["dj_turso/drivers.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connect() takes no check_same_thread"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_stdlib_option[check-same-thread]"
+where = ["dj_turso/base.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connect() takes no detect_types"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_stdlib_option[detect-types]"
+where = ["dj_turso/base.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
+name = "pyturso connect() takes no uri"
+test = "tests/core/test_turso_assumptions.py::test_pyturso_connect_refuses_stdlib_option[uri]"
+where = ["dj_turso/base.py"]
 
 [[assumption]]
 evidence = "https://github.com/tursodatabase/turso/tree/v0.8.4/bindings/python"
@@ -254,19 +284,19 @@ test = "tests/core/test_features.py::test_captured_query_shows_quoted_parameters
 where = ["dj_turso/operations.py"]
 
 [[assumption]]
-evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/serverless/python/turso_serverless/session.py"
 name = "turso_serverless Session._reset_stream"
 test = "tests/core/test_session.py::test_stream_ended_after_successful_statement_loses_transaction"
 where = ["dj_turso/session.py"]
 
 [[assumption]]
-evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/serverless/python/turso_serverless/session.py"
 name = "turso_serverless Session._post, _base_url and _baton"
 test = "tests/core/test_session.py::test_queries_reuse_one_tcp_connection"
 where = ["dj_turso/session.py"]
 
 [[assumption]]
-evidence = "https://github.com/tursodatabase/turso/blob/main/serverless/python/turso_serverless/session.py"
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/serverless/python/turso_serverless/session.py"
 manual = "Session still keeps its autocommit state in _autocommit; dj-turso writes it too, so a rename upstream would not fail a test"
 name = "turso_serverless Session._autocommit"
 verified = "2026-11-23 turso-serverless 0.1.0"
@@ -298,3 +328,47 @@ manual = "Turso Cloud runs a newer engine than the locked pyturso; its drift sho
 name = "Raw-engine tests run on local pyturso only"
 verified = "2026-11-23 pyturso 0.8.4"
 where = ["tests/core/test_turso_assumptions.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso date functions keep milliseconds at most"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[date-functions-keep-milliseconds]"
+where = ["dj_turso/operations.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso's dialect tracks SQLite 3.50.4"
+test = "tests/core/test_turso_assumptions.py::test_turso_answers[sqlite-dialect-version]"
+where = ["dj_turso/base.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso has no ORDER BY inside an aggregate"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-aggregate-order-by]"
+where = ["dj_turso/features.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso keeps SQLite's limit of 2000 result columns"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-more-than-2000-columns]"
+where = ["dj_turso/operations.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+name = "Turso applies PRAGMA foreign_keys inside a transaction"
+test = "tests/core/test_turso_assumptions.py::test_turso_applies_foreign_keys_pragma_inside_transaction"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://docs.turso.tech/sdk/http/reference"
+manual = "IDLE_ROLLBACK_MESSAGE still matches what Turso Cloud answers on a transaction it rolled back for idling"
+name = "Turso Cloud's message for a transaction rolled back for idling"
+verified = "2026-11-24 Turso Cloud"
+where = ["dj_turso/session.py"]
+
+[[assumption]]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+manual = "UNCONFIRMED: local pyturso 0.8.4 binds 100000 parameters; check Turso Cloud and turso_serverless before keeping MAX_QUERY_PARAMS"
+name = "Turso keeps SQLite's limit of 32766 query parameters"
+verified = "2026-11-24 unconfirmed"
+where = ["dj_turso/features.py"]

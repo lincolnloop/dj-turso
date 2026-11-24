@@ -5,6 +5,7 @@ workaround it made unnecessary. tests/assumptions.toml says which code each
 test backs.
 """
 
+import collections.abc
 import pathlib
 import typing as t
 
@@ -16,6 +17,11 @@ from turso import _turso
 @pytest.mark.parametrize(
     ("sql", "rows"),
     [
+        pytest.param(
+            "SELECT strftime('%f', '2020-01-01 00:00:00.123456')",
+            [("00.123",)],
+            id="date-functions-keep-milliseconds",
+        ),
         pytest.param(
             "SELECT datetime('2020-01-01', 'Europe/Paris')",
             [(None,)],
@@ -30,6 +36,11 @@ from turso import _turso
             "SELECT 'aa' REGEXP '(a)\\1'",
             [(None,)],
             id="regexp-backreference-is-null",
+        ),
+        pytest.param(
+            "SELECT sqlite_version()",
+            [("3.50.4",)],
+            id="sqlite-dialect-version",
         ),
         pytest.param(
             "SELECT STDDEV(x) FROM (SELECT 1 AS x UNION ALL SELECT 3)",
@@ -108,6 +119,21 @@ def test_turso_answers(rows: list[tuple[t.Any, ...]], sql: str) -> None:
             "SELECT 1 XOR 0",
             id="no-xor-operator",
         ),
+        pytest.param(
+            'near "%": syntax error',
+            "SELECT %s",
+            id="no-format-placeholders",
+        ),
+        pytest.param(
+            "Parse error: ORDER BY clause is not supported yet in aggregate functions",
+            "SELECT group_concat(x, ',' ORDER BY x) FROM (SELECT 'a' AS x)",
+            id="no-aggregate-order-by",
+        ),
+        pytest.param(
+            "Parse error: too many columns in result set",
+            "SELECT " + ", ".join(["1"] * 2001),
+            id="no-more-than-2000-columns",
+        ),
     ],
 )
 def test_turso_refuses(message: str, sql: str) -> None:
@@ -185,48 +211,79 @@ def test_turso_memory_database_is_per_connection() -> None:
     assert second.execute("SELECT name FROM sqlite_master").fetchall() == []
 
 
-def test_pyturso_paramstyle_is_qmark() -> None:
-    assert turso.paramstyle == "qmark"
+def test_turso_applies_foreign_keys_pragma_inside_transaction() -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("BEGIN")
+    connection.execute("PRAGMA foreign_keys = ON")
+
+    assert connection.execute("PRAGMA foreign_keys").fetchall() == [(1,)]
 
 
 @pytest.mark.parametrize(
-    ("message", "name", "owner"),
+    ("parameters", "sql"),
+    [
+        pytest.param({"name": 1}, "SELECT :name", id="named"),
+        pytest.param((1,), "SELECT ?", id="qmark"),
+    ],
+)
+def test_pyturso_binds_placeholders(
+    parameters: dict[str, int] | tuple[int], sql: str
+) -> None:
+    connection = turso.connect(":memory:", isolation_level=None)
+
+    assert connection.execute(sql, parameters).fetchall() == [(1,)]
+
+
+@pytest.mark.parametrize(
+    ("make_owner", "message", "name"),
     [
         pytest.param(
+            lambda: turso,
             "module 'turso' has no attribute 'Binary'",
             "Binary",
-            turso,
             id="no-binary",
         ),
         pytest.param(
+            lambda: turso.connect(":memory:", isolation_level=None),
             "'Connection' object has no attribute 'backup'",
             "backup",
-            turso.connect(":memory:"),
             id="no-backup",
         ),
         pytest.param(
+            lambda: turso.connect(":memory:", isolation_level=None),
             "'Connection' object has no attribute 'create_function'",
             "create_function",
-            turso.connect(":memory:"),
             id="no-create-function",
         ),
     ],
 )
-def test_pyturso_lacks_stdlib_api(message: str, name: str, owner: object) -> None:
+def test_pyturso_lacks_stdlib_api(
+    make_owner: collections.abc.Callable[[], object], message: str, name: str
+) -> None:
+    owner = make_owner()
+
     with pytest.raises(AttributeError) as excinfo:
         getattr(owner, name)
 
     assert str(excinfo.value) == message
 
 
-def test_pyturso_connect_refuses_timeout() -> None:
-    options: dict[str, t.Any] = {"timeout": 1}
-
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        pytest.param("check_same_thread", False, id="check-same-thread"),
+        pytest.param("detect_types", 0, id="detect-types"),
+        pytest.param("timeout", 1, id="timeout"),
+        pytest.param("uri", True, id="uri"),
+    ],
+)
+def test_pyturso_connect_refuses_stdlib_option(option: str, value: t.Any) -> None:
     with pytest.raises(TypeError) as excinfo:
-        turso.connect(":memory:", **options)
+        turso.connect(":memory:", **{option: value})
 
-    assert (
-        str(excinfo.value) == "connect() got an unexpected keyword argument 'timeout'"
+    assert str(excinfo.value) == (
+        f"connect() got an unexpected keyword argument '{option}'"
     )
 
 
