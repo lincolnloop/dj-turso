@@ -45,6 +45,23 @@ uvx --with tox-uv tox
 A bare `pytest` runs the vendored suite. The vendored tests are never edited; see
 [`tests/vendor/VENDORED.md`](tests/vendor/VENDORED.md).
 
+## Upstream assumptions
+
+[`tests/assumptions.toml`](tests/assumptions.toml) lists what dj-turso relies on from
+Django, Turso and its drivers, each with the code that relies on it:
+
+```toml
+[[assumption]]
+name = "Turso has no XOR operator"
+where = ["dj_turso/compiler.py"]
+evidence = "https://github.com/tursodatabase/turso/blob/v0.8.4/COMPAT.md"
+test = "tests/core/test_turso_assumptions.py::test_turso_refuses[no-xor-operator]"
+```
+
+A `test` fails once the fact stops holding, either way: a fact lost breaks dj-turso, and
+a fact gained means the workaround in `where` can go. A fact no test can check has
+`manual` (what to re-check) and `verified` (when, against which version) instead.
+
 ## Pull requests
 
 Pull request titles follow [Conventional Commits](https://www.conventionalcommits.org),
