@@ -301,7 +301,9 @@ def test_type_error_decoding_response_is_not_relabeled(
 
 
 def test_failing_init_command_raises_operational_error(
-    django_db_blocker: pytest_django.DjangoDbBlocker, remote_settings: dict[str, t.Any]
+    django_db_blocker: pytest_django.DjangoDbBlocker,
+    remote_settings: dict[str, t.Any],
+    request: pytest.FixtureRequest,
 ) -> None:
     remote_settings["OPTIONS"]["init_command"] = "SELECT * FROM missing"
     handler = django.db.utils.ConnectionHandler({"default": remote_settings})
@@ -313,7 +315,14 @@ def test_failing_init_command_raises_operational_error(
     ):
         connection.ensure_connection()
 
-    assert str(excinfo.value) == "Tursodb error: Parse error: no such table: missing"
+    # Turso Cloud runs a newer engine than the stub's pyturso, without the prefix.
+    assert (
+        str(excinfo.value)
+        == {
+            "cloud": "Tursodb error: no such table: missing",
+            "stub": "Tursodb error: Parse error: no such table: missing",
+        }[request.node.callspec.params["remote_settings"]]
+    )
 
 
 # How the server expires an idle stream: measured on Turso Cloud, and so answered by
